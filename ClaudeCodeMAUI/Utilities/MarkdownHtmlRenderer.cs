@@ -275,15 +275,6 @@ namespace ClaudeCodeMAUI.Utilities
     </style>
 </head>
 <body>
-    <!-- PANNELLO TEST CONTROLS -->
-    <div style=""padding: 10px; background-color: #2d2d2d; margin-bottom: 10px; border: 2px solid #444;"">
-        <div style=""color: #3fb950; font-weight: bold; margin-bottom: 8px;"">🧪 TEST CONTROLS</div>
-        <button onclick=""testAppendMessage()"" style=""padding: 8px 16px; margin: 5px; cursor: pointer; background-color: #238636; color: white; border: none; border-radius: 4px;"">Test appendMessage (interno)</button>
-        <button onclick=""testSimpleAlert()"" style=""padding: 8px 16px; margin: 5px; cursor: pointer; background-color: #1f6feb; color: white; border: none; border-radius: 4px;"">Test Alert</button>
-        <button onclick=""testDomManipulation()"" style=""padding: 8px 16px; margin: 5px; cursor: pointer; background-color: #8957e5; color: white; border: none; border-radius: 4px;"">Test DOM Manipulation</button>
-        <div id=""test-result"" style=""margin-top: 10px; padding: 8px; background-color: #1a1a1a; color: #3fb950; min-height: 30px; border-radius: 4px;"">Ready for testing...</div>
-    </div>
-
     <div id=""conversation-container"">
         {conversationContent}
     </div>
@@ -322,35 +313,6 @@ namespace ClaudeCodeMAUI.Utilities
         // Funzione alternativa che usa la variabile globale
         function appendFromGlobal() {{
             return appendMessage(htmlToAppend);
-        }}
-
-        // ===== FUNZIONI DI TEST =====
-
-        function testAppendMessage() {{
-            console.log('testAppendMessage called');
-            const testHtml = '<div style=""background-color: rgb(63,185,80); color: white; padding: 10px; margin: 10px; border-radius: 4px;"">✅ TEST MESSAGE DA PULSANTE INTERNO</div>';
-            const result = appendMessage(testHtml);
-            document.getElementById('test-result').innerText = 'testAppendMessage: ' + result;
-            console.log('testAppendMessage result: ' + result);
-        }}
-
-        function testSimpleAlert() {{
-            console.log('testSimpleAlert called');
-            alert('JavaScript Alert funziona!');
-            document.getElementById('test-result').innerText = 'testSimpleAlert: Alert mostrato!';
-        }}
-
-        function testDomManipulation() {{
-            console.log('testDomManipulation called');
-            const resultDiv = document.getElementById('test-result');
-            resultDiv.style.backgroundColor = 'rgb(137,87,229)';
-            resultDiv.innerText = 'testDomManipulation: DOM modificato con successo! Timestamp: ' + new Date().toLocaleTimeString();
-            return 'DOM modified successfully';
-        }}
-
-        function getTestValue() {{
-            console.log('getTestValue called');
-            return 'JavaScript return value: ' + new Date().toISOString();
         }}
 
         function setTheme(theme) {{
