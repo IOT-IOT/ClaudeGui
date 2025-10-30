@@ -165,9 +165,9 @@ namespace ClaudeCodeMAUI.Utilities
         .tool-call {{
             background-color: {toolCallBg};
             border: 1px solid {toolCallBorder};
-            border-radius: 6px;
-            padding: 10px 14px;
-            margin: 10px 0;
+            border-radius: 4px;
+            padding: 5px 8px;
+            margin: 5px 0;
             font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
             font-size: 10px;
         }}
@@ -189,9 +189,9 @@ namespace ClaudeCodeMAUI.Utilities
 
         /* ===== TOOL RESULTS ===== */
         .tool-result {{
-            border-radius: 6px;
-            padding: 8px 14px;
-            margin: 8px 0;
+            border-radius: 4px;
+            padding: 4px 8px;
+            margin: 4px 0;
             font-size: 10px;
             font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
         }}
