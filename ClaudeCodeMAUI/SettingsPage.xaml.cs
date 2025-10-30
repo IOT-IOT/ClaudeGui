@@ -40,9 +40,10 @@ public partial class SettingsPage : ContentPage
     {
         SwitchAutoSummary.IsToggled = _settingsService.AutoSendSummaryPrompt;
         SwitchDarkTheme.IsToggled = _settingsService.IsDarkTheme;
+        SwitchPlayBeep.IsToggled = _settingsService.PlayBeepOnMetadata;
 
-        Log.Debug("SettingsPage: Impostazioni caricate - AutoSummary={AutoSummary}, DarkTheme={DarkTheme}",
-            SwitchAutoSummary.IsToggled, SwitchDarkTheme.IsToggled);
+        Log.Debug("SettingsPage: Impostazioni caricate - AutoSummary={AutoSummary}, DarkTheme={DarkTheme}, PlayBeep={PlayBeep}",
+            SwitchAutoSummary.IsToggled, SwitchDarkTheme.IsToggled, SwitchPlayBeep.IsToggled);
     }
 
     /// <summary>
@@ -95,6 +96,18 @@ public partial class SettingsPage : ContentPage
         Log.Information("SettingsPage: IsDarkTheme modificato a {Value}", e.Value);
 
         // Notifica il cambiamento (la MainPage dovrà aggiornare il tema della WebView)
+        _onSettingsChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// Handler per il toggle dell'impostazione "Play Beep on Metadata".
+    /// </summary>
+    private void OnPlayBeepToggled(object sender, ToggledEventArgs e)
+    {
+        _settingsService.PlayBeepOnMetadata = e.Value;
+        Log.Information("SettingsPage: PlayBeepOnMetadata modificato a {Value}", e.Value);
+
+        // Notifica il cambiamento
         _onSettingsChanged?.Invoke();
     }
 

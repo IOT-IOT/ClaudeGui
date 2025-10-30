@@ -11,6 +11,7 @@ public class SettingsService
     // ===== CHIAVI PER LE PREFERENCES =====
     private const string KEY_AUTO_SEND_SUMMARY_PROMPT = "AutoSendSummaryPrompt";
     private const string KEY_THEME = "IsDarkTheme";
+    private const string KEY_PLAY_BEEP_ON_METADATA = "PlayBeepOnMetadata";
 
     /// <summary>
     /// Ottiene o imposta se il prompt di riassunto deve essere inviato automaticamente
@@ -52,6 +53,25 @@ public class SettingsService
     }
 
     /// <summary>
+    /// Ottiene o imposta se riprodurre un beep sonoro quando arrivano i metadata.
+    /// Default: true
+    /// </summary>
+    public bool PlayBeepOnMetadata
+    {
+        get
+        {
+            var value = Preferences.Get(KEY_PLAY_BEEP_ON_METADATA, true);
+            Log.Debug("SettingsService: PlayBeepOnMetadata = {Value}", value);
+            return value;
+        }
+        set
+        {
+            Preferences.Set(KEY_PLAY_BEEP_ON_METADATA, value);
+            Log.Information("SettingsService: PlayBeepOnMetadata impostato a {Value}", value);
+        }
+    }
+
+    /// <summary>
     /// Resetta tutte le impostazioni ai valori di default.
     /// </summary>
     public void ResetToDefaults()
@@ -59,6 +79,7 @@ public class SettingsService
         Log.Information("SettingsService: Reset di tutte le impostazioni ai valori di default");
         AutoSendSummaryPrompt = true;
         IsDarkTheme = true;
+        PlayBeepOnMetadata = true;
     }
 
     /// <summary>
@@ -69,7 +90,8 @@ public class SettingsService
         return new Dictionary<string, object>
         {
             { KEY_AUTO_SEND_SUMMARY_PROMPT, AutoSendSummaryPrompt },
-            { KEY_THEME, IsDarkTheme }
+            { KEY_THEME, IsDarkTheme },
+            { KEY_PLAY_BEEP_ON_METADATA, PlayBeepOnMetadata }
         };
     }
 }

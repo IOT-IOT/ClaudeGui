@@ -640,15 +640,37 @@ public partial class MainPage : ContentPage
                     e.Model
                 );
 
+                // Converti duration da millisecondi a secondi con 1 cifra decimale
+                var durationSeconds = e.DurationMs / 1000.0;
+
                 // Genera HTML per i metadata da aggiungere sotto l'ultimo messaggio di Claude
                 var metadataHtml = $@"
 <div class=""metadata-container"" onclick=""this.classList.toggle('collapsed')"">
-    <span class=""metadata-content"">Duration: {e.DurationMs}ms  |  Cost: ${e.TotalCostUsd:F4}  |  Tokens: {e.InputTokens} in / {e.OutputTokens} out  |  Turns: {e.NumTurns}</span>
+    <span class=""metadata-content"">Duration: {durationSeconds:F1}s  |  Cost: ${e.TotalCostUsd:F4}  |  Tokens: {e.InputTokens} in / {e.OutputTokens} out  |  Turns: {e.NumTurns}</span>
 </div>";
 
                 // Aggiungi i metadata al buffer della conversazione
                 _conversationHtml.Append(metadataHtml);
                 Log.Information("Added metadata to conversation buffer. Total buffer size: {Size} chars", _conversationHtml.Length);
+
+                // Riproduci beep se abilitato nelle impostazioni
+                if (_settingsService != null && _settingsService.PlayBeepOnMetadata)
+                {
+                    try
+                    {
+                        // Usa System.Console.Beep per Windows
+                        #if WINDOWS
+                        System.Console.Beep(800, 200); // Frequenza 800Hz, durata 200ms
+                        Log.Debug("Beep played for metadata received");
+                        #else
+                        Log.Warning("Beep not supported on this platform");
+                        #endif
+                    }
+                    catch (Exception beepEx)
+                    {
+                        Log.Warning(beepEx, "Failed to play beep sound");
+                    }
+                }
 
                 // Rigenera e ricarica la pagina HTML completa nella WebView
                 if (_htmlRenderer != null && _isWebViewReady)

@@ -50,6 +50,23 @@
                                 Toggled="OnAutoSummaryToggled" />
                     </Grid>
 
+                    <!-- Opzione 2: Play Beep on Metadata -->
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                        <VerticalStackLayout Grid.Column="0" VerticalOptions="Center">
+                            <Label Text="Play beep on metadata"
+                                   FontSize="16"
+                                   TextColor="{DynamicResource PrimaryTextColor}" />
+                            <Label Text="Play a sound notification when response statistics are received"
+                                   FontSize="12"
+                                   TextColor="{DynamicResource SecondaryTextColor}"
+                                   Margin="0,2,0,0" />
+                        </VerticalStackLayout>
+                        <Switch x:Name="SwitchPlayBeep"
+                                Grid.Column="1"
+                                VerticalOptions="Center"
+                                Toggled="OnPlayBeepToggled" />
+                    </Grid>
+
                 </VerticalStackLayout>
             </Frame>
 
