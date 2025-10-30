@@ -169,7 +169,7 @@ namespace ClaudeCodeMAUI.Utilities
             padding: 10px 14px;
             margin: 10px 0;
             font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-            font-size: 0.9em;
+            font-size: 10px;
         }}
 
         .tool-call-header {{
@@ -192,7 +192,7 @@ namespace ClaudeCodeMAUI.Utilities
             border-radius: 6px;
             padding: 8px 14px;
             margin: 8px 0;
-            font-size: 0.85em;
+            font-size: 10px;
             font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
         }}
 
