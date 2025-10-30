@@ -11,6 +11,7 @@ namespace ClaudeCodeMAUI;
 public partial class MainPage : ContentPage
 {
     private readonly DbService? _dbService;
+    private readonly SettingsService? _settingsService;
     private ClaudeProcessManager? _processManager;
     private StreamJsonParser? _parser;
     private ConversationSession? _currentSession;
@@ -28,6 +29,7 @@ public partial class MainPage : ContentPage
     public MainPage()
     {
         InitializeComponent();
+        _settingsService = new SettingsService();
         Log.Information("MainPage initialized");
     }
 
@@ -35,7 +37,71 @@ public partial class MainPage : ContentPage
     {
         _dbService = dbService;
         Log.Information("MainPage initialized with DbService");
+
+        // Aggiungi handler per gestione tastiera su Editor
+        InitializeInputEditor();
+
+        // Carica le impostazioni salvate per il tema (solo se _settingsService è inizializzato)
+        if (_settingsService != null)
+        {
+            _isDarkTheme = _settingsService.IsDarkTheme;
+            SwitchTheme.IsToggled = _isDarkTheme;
+        }
     }
+
+    /// <summary>
+    /// Inizializza l'InputEditor con la gestione delle keyboard shortcuts.
+    /// Enter = invia messaggio, Ctrl+Enter = nuova linea
+    /// </summary>
+    private void InitializeInputEditor()
+    {
+#if WINDOWS
+        // Su Windows, possiamo intercettare i key press usando l'handler nativo
+        InputEditor.HandlerChanged += (s, e) =>
+        {
+            if (InputEditor.Handler?.PlatformView is Microsoft.UI.Xaml.Controls.TextBox textBox)
+            {
+                // Usa PreviewKeyDown invece di KeyDown per intercettare PRIMA dell'inserimento
+                textBox.PreviewKeyDown += OnInputEditorKeyDown;
+            }
+        };
+#endif
+    }
+
+#if WINDOWS
+    /// <summary>
+    /// Handler per KeyDown su Windows - gestisce Enter vs Ctrl+Enter.
+    /// IMPORTANTE: Usa PreviewKeyDown per intercettare PRIMA che il carattere venga inserito.
+    /// </summary>
+    private void OnInputEditorKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        // Enter senza modificatori = invia messaggio
+        if (e.Key == Windows.System.VirtualKey.Enter)
+        {
+            var ctrlPressed = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(
+                Windows.System.VirtualKey.Control).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+
+            if (!ctrlPressed)
+            {
+                // Enter normale = invia messaggio
+                e.Handled = true; // Previeni il default (nuova linea)
+
+                // Rimuovi eventuali newline già inseriti (fallback se e.Handled non funziona)
+                var currentText = InputEditor.Text;
+                if (!string.IsNullOrEmpty(currentText) && currentText.EndsWith("\r"))
+                {
+                    InputEditor.Text = currentText.TrimEnd('\r', '\n');
+                }
+
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    OnSendMessage(sender, EventArgs.Empty);
+                });
+            }
+            // Se Ctrl è premuto, lascia il comportamento default (nuova linea)
+        }
+    }
+#endif
 
     private void OnNewConversationClicked(object? sender, EventArgs e)
     {
@@ -53,9 +119,68 @@ public partial class MainPage : ContentPage
         Log.Information("Plan mode toggled: {IsPlanMode}", _isPlanMode);
     }
 
+    /// <summary>
+    /// Handler per il click sul pulsante Settings.
+    /// Apre la pagina delle impostazioni in modalità modale.
+    /// </summary>
+    private async void OnSettingsClicked(object? sender, EventArgs e)
+    {
+        try
+        {
+            Log.Information("Opening Settings page");
+
+            // Verifica che _settingsService sia inizializzato
+            if (_settingsService == null)
+            {
+                Log.Error("SettingsService is not initialized");
+                await DisplayAlert("Error", "Settings service is not available.", "OK");
+                return;
+            }
+
+            // Crea la pagina Settings passando il SettingsService e un callback per notificare i cambiamenti
+            var settingsPage = new SettingsPage(_settingsService, OnSettingsChanged);
+
+            // Apri la pagina in modalità modale
+            await Navigation.PushModalAsync(new NavigationPage(settingsPage));
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Error opening Settings page");
+            await DisplayAlert("Error", "Failed to open settings page.", "OK");
+        }
+    }
+
+    /// <summary>
+    /// Callback chiamato quando le impostazioni vengono modificate.
+    /// Aggiorna l'UI della MainPage per riflettere le nuove impostazioni.
+    /// </summary>
+    private void OnSettingsChanged()
+    {
+        Log.Information("Settings changed, updating UI");
+
+        // Aggiorna il tema se è stato modificato (solo se _settingsService è inizializzato)
+        if (_settingsService != null)
+        {
+            var newTheme = _settingsService.IsDarkTheme;
+            if (newTheme != _isDarkTheme)
+            {
+                _isDarkTheme = newTheme;
+                SwitchTheme.IsToggled = _isDarkTheme;
+                // Il toggle dello switch chiamerà OnThemeToggled che aggiornerà la WebView
+            }
+        }
+    }
+
     private async void OnThemeToggled(object? sender, ToggledEventArgs e)
     {
         _isDarkTheme = e.Value;
+
+        // Salva l'impostazione del tema (solo se _settingsService è inizializzato)
+        if (_settingsService != null)
+        {
+            _settingsService.IsDarkTheme = _isDarkTheme;
+        }
+
         if (LblTheme != null)
         {
             LblTheme.Text = _isDarkTheme ? "Dark" : "Light";
@@ -69,9 +194,30 @@ public partial class MainPage : ContentPage
         }
     }
 
-    protected override void OnAppearing()
+    /// <summary>
+    /// Aggiorna la barra superiore con la directory di lavoro corrente.
+    /// </summary>
+    private void UpdateWorkingDirectory()
+    {
+        try
+        {
+            var currentDir = Directory.GetCurrentDirectory();
+            WorkingDirectoryLabel.Text = $"Working Directory: {currentDir}";
+            Log.Information("Working directory updated: {Directory}", currentDir);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to get current directory");
+            WorkingDirectoryLabel.Text = "Working Directory: <error>";
+        }
+    }
+
+    protected override async void OnAppearing()
     {
         base.OnAppearing();
+
+        // Aggiorna la barra con la working directory
+        UpdateWorkingDirectory();
 
         // Inizializza HTML renderer
         if (_htmlRenderer == null)
@@ -97,10 +243,16 @@ public partial class MainPage : ContentPage
                 ConversationWebView.Source = new Uri($"file:///{tempPath.Replace("\\", "/")}");
 
                 // Handler per quando la WebView è pronta
-                ConversationWebView.Navigated += (s, e) =>
+                ConversationWebView.Navigated += async (s, e) =>
                 {
                     _isWebViewReady = true;
                     Log.Information("WebView ready and navigated to: {Url}", e.Url);
+
+                    // Dopo che la WebView è pronta, controlla se ci sono sessioni da recuperare
+                    if (_dbService != null && _currentSession == null)
+                    {
+                        await RecoverLastSessionAsync();
+                    }
                 };
 
                 Log.Information("WebView initialized with HTML file from disk");
@@ -112,14 +264,148 @@ public partial class MainPage : ContentPage
         }
     }
 
+    /// <summary>
+    /// Recupera l'ultima sessione attiva dal database e chiede all'utente se vuole riprenderla.
+    /// Chiamato automaticamente all'avvio dell'applicazione dopo che la WebView è pronta.
+    /// </summary>
+    private async Task RecoverLastSessionAsync()
+    {
+        try
+        {
+            Log.Information("RecoverLastSessionAsync: Starting session recovery check");
+
+            // 1. Interroga DB per sessioni attive/killed
+            var sessions = await _dbService!.GetActiveConversationsAsync();
+
+            if (sessions.Count == 0)
+            {
+                Log.Information("No sessions to recover");
+                return;
+            }
+
+            Log.Information("Found {Count} active sessions", sessions.Count);
+
+            // 2. Prendi la più recente (per last_activity)
+            var lastSession = sessions.OrderByDescending(s => s.LastActivity).First();
+            Log.Information("Most recent session: {SessionId}, Last activity: {LastActivity}",
+                lastSession.SessionId, lastSession.LastActivity);
+
+            // 3. Chiedi all'utente se vuole riprendere
+            var resume = await DisplayAlert(
+                "Resume Session?",
+                $"Found previous session from {lastSession.LastActivity:g}\n" +
+                $"Status: {lastSession.Status}\n\n" +
+                "Do you want to resume it?",
+                "Yes", "No"
+            );
+
+            if (resume)
+            {
+                Log.Information("User chose to resume session {SessionId}", lastSession.SessionId);
+                // 4. Riprendi la sessione
+                await ResumeSessionAsync(lastSession);
+            }
+            else
+            {
+                Log.Information("User chose NOT to resume session {SessionId}", lastSession.SessionId);
+                // 5. Marca come closed e inizia nuova
+                await _dbService.UpdateStatusAsync(lastSession.SessionId, "closed");
+                Log.Information("Session {SessionId} marked as closed", lastSession.SessionId);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to recover session");
+            await DisplayAlert("Error", $"Failed to recover session: {ex.Message}", "OK");
+        }
+    }
+
+    /// <summary>
+    /// Riprende una sessione esistente usando il flag --resume di Claude.
+    /// Riavvia il processo Claude con il session_id esistente per recuperare tutto il contesto.
+    /// </summary>
+    private async Task ResumeSessionAsync(ConversationSession session)
+    {
+        try
+        {
+            Log.Information("Resuming session: {SessionId}", session.SessionId);
+
+            // Reset flag sessione inizializzata
+            _sessionInitialized = false;
+
+            // 1. Imposta sessione corrente
+            _currentSession = session;
+            _isPlanMode = session.IsPlanMode;
+            SwitchPlanMode.IsToggled = _isPlanMode;
+            Log.Information("Session set as current. Plan mode: {IsPlanMode}", _isPlanMode);
+
+            // 2. Crea parser
+            _parser = new StreamJsonParser();
+            _parser.SessionInitialized += OnSessionInitialized;
+            _parser.TextReceived += OnTextReceived;
+            _parser.ToolCallReceived += OnToolCallReceived;
+            _parser.ToolResultReceived += OnToolResultReceived;
+            _parser.MetadataReceived += OnMetadataReceived;
+            Log.Information("Parser created and events wired");
+
+            // 3. Crea process manager CON resumeSessionId (QUESTO È IL FIX PRINCIPALE!)
+            _processManager = new ClaudeProcessManager(
+                _isPlanMode,
+                session.SessionId,  // <<<< Passa il session_id per --resume
+                session.SessionId
+            );
+            _processManager.JsonLineReceived += OnJsonLineReceived;
+            _processManager.ErrorReceived += OnErrorReceived;
+            _processManager.ProcessCompleted += OnProcessCompleted;
+            Log.Information("Process manager created with session_id for --resume");
+
+            // 4. Avvia processo con --resume
+            _processManager.Start();
+            Log.Information("Claude process started with --resume {SessionId}", session.SessionId);
+
+            // 5. Aggiorna UI
+            BtnStop.IsEnabled = true;
+            LblStatus.Text = "Session Resumed";
+            LblStatus.TextColor = Colors.Orange;
+            Log.Information("UI updated - session resumed indicator shown");
+
+            // 6. Attendi che il processo sia pronto
+            await Task.Delay(1500);
+
+            // 7. Invia prompt di riassunto automatico SOLO se abilitato nelle impostazioni
+            if (_settingsService != null && _settingsService.AutoSendSummaryPrompt)
+            {
+                var summaryPrompt = "Ciao! Mi ricordi brevemente su cosa stavamo lavorando? " +
+                                    "Dammi un riassunto del contesto della nostra conversazione precedente.";
+
+                Log.Information("Auto-send summary prompt is enabled, sending summary request to Claude");
+                await _processManager.SendMessageAsync(summaryPrompt);
+            }
+            else
+            {
+                Log.Information("Auto-send summary prompt is disabled or SettingsService not initialized, skipping summary request");
+            }
+
+            Log.Information("Session resumed successfully");
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to resume session");
+            await DisplayAlert("Error", $"Failed to resume session: {ex.Message}", "OK");
+
+            // Fallback: avvia nuova conversazione se recovery fallisce
+            StartNewConversation();
+        }
+    }
+
     private void OnSendMessage(object? sender, EventArgs e)
     {
-        var message = InputEntry.Text?.Trim();
+        var message = InputEditor.Text?.Trim();
         if (string.IsNullOrWhiteSpace(message))
             return;
 
         SendMessageAsync(message);
-        InputEntry.Text = string.Empty;
+        InputEditor.Text = string.Empty;
     }
 
     private async void StartNewConversation()
@@ -165,7 +451,9 @@ public partial class MainPage : ContentPage
             BtnStop.IsEnabled = true;
             LblStatus.Text = "Running...";
             LblStatus.TextColor = Colors.Green;
-            MetadataLabel.Text = string.Empty;
+
+            // Aggiorna la working directory quando si inizia una nuova conversazione
+            UpdateWorkingDirectory();
 
             // Pulisci WebView
             if (_isWebViewReady)
@@ -241,6 +529,12 @@ public partial class MainPage : ContentPage
                 _currentSession.SessionId = e.SessionId;
                 _currentSession.CurrentModel = e.Model;
                 _dbService.InsertSessionAsync(_currentSession);
+
+                // Notifica l'App del session ID corrente per gestire OnSleep gracefully
+                if (Application.Current is App app)
+                {
+                    app.SetCurrentSession(_dbService, e.SessionId);
+                }
             }
 
             // Mostra messaggio solo la PRIMA volta
@@ -346,8 +640,23 @@ public partial class MainPage : ContentPage
                     e.Model
                 );
 
-                // Aggiorna la metadata bar (tutto su una riga, allineato a destra, colore giallo)
-                MetadataLabel.Text = $"Duration: {e.DurationMs}ms  |  Cost: ${e.TotalCostUsd:F4}  |  Tokens: {e.InputTokens} in / {e.OutputTokens} out  |  Turns: {e.NumTurns}";
+                // Genera HTML per i metadata da aggiungere sotto l'ultimo messaggio di Claude
+                var metadataHtml = $@"
+<div class=""metadata-container"" onclick=""this.classList.toggle('collapsed')"">
+    <span class=""metadata-content"">Duration: {e.DurationMs}ms  |  Cost: ${e.TotalCostUsd:F4}  |  Tokens: {e.InputTokens} in / {e.OutputTokens} out  |  Turns: {e.NumTurns}</span>
+</div>";
+
+                // Aggiungi i metadata al buffer della conversazione
+                _conversationHtml.Append(metadataHtml);
+                Log.Information("Added metadata to conversation buffer. Total buffer size: {Size} chars", _conversationHtml.Length);
+
+                // Rigenera e ricarica la pagina HTML completa nella WebView
+                if (_htmlRenderer != null && _isWebViewReady)
+                {
+                    var fullHtml = _htmlRenderer.GenerateFullPage(_isDarkTheme, _conversationHtml.ToString());
+                    ConversationWebView.Source = new HtmlWebViewSource { Html = fullHtml };
+                    Log.Information("WebView reloaded with metadata appended");
+                }
             }
         });
     }

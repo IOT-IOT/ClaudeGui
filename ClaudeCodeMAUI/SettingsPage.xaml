@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="ClaudeCodeMAUI.SettingsPage"
+             Title="Settings"
+             BackgroundColor="{DynamicResource PageBackgroundColor}">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="20" Spacing="20">
+
+            <!-- Header -->
+            <VerticalStackLayout Spacing="5">
+                <Label Text="⚙️ Settings"
+                       FontSize="28"
+                       FontAttributes="Bold"
+                       TextColor="{DynamicResource PrimaryTextColor}" />
+                <Label Text="Configure your Claude Code GUI experience"
+                       FontSize="14"
+                       TextColor="{DynamicResource SecondaryTextColor}" />
+            </VerticalStackLayout>
+
+            <!-- Sezione: Session Recovery -->
+            <Frame BorderColor="{DynamicResource BorderColor}"
+                   CornerRadius="10"
+                   Padding="15"
+                   BackgroundColor="{DynamicResource CardBackgroundColor}"
+                   HasShadow="True">
+                <VerticalStackLayout Spacing="15">
+
+                    <!-- Titolo sezione -->
+                    <Label Text="🔄 Session Recovery"
+                           FontSize="18"
+                           FontAttributes="Bold"
+                           TextColor="{DynamicResource PrimaryTextColor}" />
+
+                    <!-- Opzione 1: Auto Send Summary Prompt -->
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                        <VerticalStackLayout Grid.Column="0" VerticalOptions="Center">
+                            <Label Text="Auto-send summary prompt"
+                                   FontSize="16"
+                                   TextColor="{DynamicResource PrimaryTextColor}" />
+                            <Label Text="Automatically ask Claude for a summary when resuming a session"
+                                   FontSize="12"
+                                   TextColor="{DynamicResource SecondaryTextColor}"
+                                   Margin="0,2,0,0" />
+                        </VerticalStackLayout>
+                        <Switch x:Name="SwitchAutoSummary"
+                                Grid.Column="1"
+                                VerticalOptions="Center"
+                                Toggled="OnAutoSummaryToggled" />
+                    </Grid>
+
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Sezione: Appearance -->
+            <Frame BorderColor="{DynamicResource BorderColor}"
+                   CornerRadius="10"
+                   Padding="15"
+                   BackgroundColor="{DynamicResource CardBackgroundColor}"
+                   HasShadow="True">
+                <VerticalStackLayout Spacing="15">
+
+                    <!-- Titolo sezione -->
+                    <Label Text="🎨 Appearance"
+                           FontSize="18"
+                           FontAttributes="Bold"
+                           TextColor="{DynamicResource PrimaryTextColor}" />
+
+                    <!-- Opzione 2: Dark Theme -->
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                        <VerticalStackLayout Grid.Column="0" VerticalOptions="Center">
+                            <Label Text="Dark theme"
+                                   FontSize="16"
+                                   TextColor="{DynamicResource PrimaryTextColor}" />
+                            <Label Text="Use dark theme for the conversation view"
+                                   FontSize="12"
+                                   TextColor="{DynamicResource SecondaryTextColor}"
+                                   Margin="0,2,0,0" />
+                        </VerticalStackLayout>
+                        <Switch x:Name="SwitchDarkTheme"
+                                Grid.Column="1"
+                                VerticalOptions="Center"
+                                Toggled="OnDarkThemeToggled" />
+                    </Grid>
+
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Sezione: About -->
+            <Frame BorderColor="{DynamicResource BorderColor}"
+                   CornerRadius="10"
+                   Padding="15"
+                   BackgroundColor="{DynamicResource CardBackgroundColor}"
+                   HasShadow="True">
+                <VerticalStackLayout Spacing="10">
+
+                    <!-- Titolo sezione -->
+                    <Label Text="ℹ️ About"
+                           FontSize="18"
+                           FontAttributes="Bold"
+                           TextColor="{DynamicResource PrimaryTextColor}" />
+
+                    <Label Text="Claude Code GUI"
+                           FontSize="16"
+                           FontAttributes="Bold"
+                           TextColor="{DynamicResource PrimaryTextColor}" />
+
+                    <Label x:Name="LblVersion"
+                           Text="Version: 1.0.0"
+                           FontSize="14"
+                           TextColor="{DynamicResource SecondaryTextColor}" />
+
+                    <Label Text="A modern GUI for Claude Code with session recovery, markdown rendering, and more."
+                           FontSize="12"
+                           TextColor="{DynamicResource SecondaryTextColor}"
+                           LineBreakMode="WordWrap" />
+
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Pulsanti azione -->
+            <HorizontalStackLayout Spacing="10" HorizontalOptions="Center">
+                <Button Text="Reset to Defaults"
+                        Clicked="OnResetToDefaults"
+                        BackgroundColor="#FF6B6B"
+                        TextColor="White"
+                        CornerRadius="5"
+                        Padding="15,10" />
+                <Button Text="Close"
+                        Clicked="OnClose"
+                        BackgroundColor="#4ECDC4"
+                        TextColor="White"
+                        CornerRadius="5"
+                        Padding="15,10" />
+            </HorizontalStackLayout>
+
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

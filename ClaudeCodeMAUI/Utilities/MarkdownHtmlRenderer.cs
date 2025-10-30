@@ -233,6 +233,45 @@ namespace ClaudeCodeMAUI.Utilities
             margin: 20px 0;
             opacity: 0.5;
         }}
+
+        /* ===== METADATA STATS (sotto ogni risposta di Claude) ===== */
+        .metadata-container {{
+            text-align: right;
+            font-size: 10px;
+            color: #FFD700;
+            margin: 5px 0 15px 0;
+            padding: 4px 8px;
+            cursor: pointer;
+            font-family: 'Consolas', 'Courier New', monospace;
+            user-select: none;
+        }}
+
+        .metadata-container:hover {{
+            opacity: 0.8;
+        }}
+
+        .metadata-content {{
+            display: inline-block;
+            white-space: nowrap;
+        }}
+
+        .metadata-container.collapsed .metadata-content {{
+            display: none;
+        }}
+
+        .metadata-container::before {{
+            content: '📊 ';
+            font-size: 11px;
+        }}
+
+        .metadata-container.collapsed::before {{
+            content: '📊 Stats (click to show)';
+            opacity: 0.6;
+        }}
+
+        .metadata-container:not(.collapsed)::before {{
+            content: '📊 ';
+        }}
     </style>
 </head>
 <body>
