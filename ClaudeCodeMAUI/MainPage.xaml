@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="ClaudeCodeMAUI.MainPage"
+             Title="Claude Code GUI">
+
+    <Grid RowDefinitions="Auto,*,Auto" Padding="10">
+
+        <!-- Toolbar -->
+        <HorizontalStackLayout Grid.Row="0" Spacing="10" Margin="0,0,0,10">
+            <Button x:Name="BtnNew"
+                    Text="New Conversation"
+                    Clicked="OnNewConversationClicked" />
+            <Button x:Name="BtnStop"
+                    Text="Stop"
+                    Clicked="OnStopClicked"
+                    IsEnabled="False" />
+            <Label Text="Plan Mode:" VerticalOptions="Center" Margin="20,0,0,0" />
+            <Switch x:Name="SwitchPlanMode"
+                    Toggled="OnPlanModeToggled" />
+            <Label Text="Theme:" VerticalOptions="Center" Margin="20,0,0,0" />
+            <Switch x:Name="SwitchTheme"
+                    Toggled="OnThemeToggled"
+                    IsToggled="True" />
+            <Label x:Name="LblTheme"
+                   Text="Dark"
+                   VerticalOptions="Center"
+                   TextColor="Gray" />
+            <Label x:Name="LblStatus"
+                   Text="Ready"
+                   VerticalOptions="Center"
+                   Margin="20,0,0,0"
+                   TextColor="Gray" />
+        </HorizontalStackLayout>
+
+        <!-- Output Area -->
+        <Grid Grid.Row="1" RowDefinitions="Auto,*">
+            <!-- Metadata Bar -->
+            <Entry x:Name="MetadataLabel"
+                   Grid.Row="0"
+                   IsReadOnly="True"
+                   FontFamily="Consolas"
+                   FontSize="11"
+                   TextColor="Yellow"
+                   BackgroundColor="#333333"
+                   HorizontalTextAlignment="End"
+                   VerticalTextAlignment="Center" />
+
+            <!-- Output Area - WebView con HTML rendering -->
+            <Border Grid.Row="1"
+                    Stroke="Gray"
+                    StrokeThickness="1"
+                    Margin="0,5,0,10">
+                <WebView x:Name="ConversationWebView"
+                         VerticalOptions="FillAndExpand"
+                         HorizontalOptions="FillAndExpand" />
+            </Border>
+        </Grid>
+
+        <!-- Input Area -->
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto" ColumnSpacing="10">
+            <Entry x:Name="InputEntry"
+                   Grid.Column="0"
+                   Placeholder="Enter your message (press Enter to send)..."
+                   Completed="OnSendMessage" />
+            <Button x:Name="BtnSend"
+                    Grid.Column="1"
+                    Text="Send"
+                    Clicked="OnSendMessage" />
+        </Grid>
+
+    </Grid>
+
+</ContentPage>
