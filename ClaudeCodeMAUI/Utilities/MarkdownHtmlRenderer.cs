@@ -25,9 +25,10 @@ namespace ClaudeCodeMAUI.Utilities
                 .UseEmphasisExtras()
                 .UseAutoLinks()
                 .UseTaskLists()
+                .UseGenericAttributes()  // Permette di aggiungere attributi HTML ai code block
                 .Build();
 
-            Log.Information("MarkdownHtmlRenderer initialized with GitHub-flavored markdown support");
+            Log.Information("MarkdownHtmlRenderer initialized with GitHub-flavored markdown support and syntax highlighting");
         }
 
         /// <summary>
@@ -62,6 +63,10 @@ namespace ClaudeCodeMAUI.Utilities
     <meta charset=""UTF-8"">
     <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"">
     <title>Claude Conversation</title>
+
+    <!-- Highlight.js CSS for syntax highlighting -->
+    <link rel=""stylesheet"" href=""https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/{(isDarkTheme ? "github-dark" : "github")}.min.css"">
+
     <style>
         /* ===== STILI BASE (CSS HARDCODED - no CSS variables) ===== */
         * {{
@@ -279,7 +284,15 @@ namespace ClaudeCodeMAUI.Utilities
         {conversationContent}
     </div>
 
+    <!-- Highlight.js JavaScript library -->
+    <script src=""https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js""></script>
+
     <script>
+        // Initialize Highlight.js on page load
+        document.addEventListener('DOMContentLoaded', function() {{
+            hljs.highlightAll();
+        }});
+
         // ===== FUNZIONI JAVASCRIPT PER INTEROPERABILITÀ CON C# =====
 
         // Variabile globale per passare HTML da C#
@@ -298,9 +311,20 @@ namespace ClaudeCodeMAUI.Utilities
 
             const isAtBottom = window.innerHeight + window.scrollY >= document.body.offsetHeight - 50;
 
+            // Salva l'altezza corrente del container per trovare i nuovi elementi
+            const previousHeight = container.children.length;
+
             // Usa insertAdjacentHTML invece di innerHTML += per migliori performance
             container.insertAdjacentHTML('beforeend', actualHtml);
             console.log('HTML appended successfully');
+
+            // Applica syntax highlighting ai nuovi code blocks
+            const newElements = Array.from(container.children).slice(previousHeight);
+            newElements.forEach(element => {{
+                element.querySelectorAll('pre code').forEach((block) => {{
+                    hljs.highlightElement(block);
+                }});
+            }});
 
             // Auto-scroll solo se l'utente era già in fondo
             if (isAtBottom) {{
@@ -338,6 +362,9 @@ namespace ClaudeCodeMAUI.Utilities
                     return 'ERROR: container not found';
                 }}
 
+                // Salva il numero di elementi prima dell'append
+                const previousHeight = container.children.length;
+
                 // Decode Base64 -> binary string (Latin-1)
                 const binaryString = atob(base64Html);
 
@@ -355,6 +382,14 @@ namespace ClaudeCodeMAUI.Utilities
                 // Appendi HTML al container
                 container.insertAdjacentHTML('beforeend', html);
                 console.log('HTML appended successfully');
+
+                // Applica syntax highlighting ai nuovi code blocks
+                const newElements = Array.from(container.children).slice(previousHeight);
+                newElements.forEach(element => {{
+                    element.querySelectorAll('pre code').forEach((block) => {{
+                        hljs.highlightElement(block);
+                    }});
+                }});
 
                 // Auto-scroll in fondo
                 window.scrollTo({{ top: document.body.scrollHeight, behavior: 'instant' }});
@@ -376,7 +411,8 @@ namespace ClaudeCodeMAUI.Utilities
         }
 
         /// <summary>
-        /// Converte markdown in HTML usando Markdig
+        /// Converte markdown in HTML usando Markdig.
+        /// Gestisce anche ANSI escape codes per preservare i colori di Claude Code.
         /// </summary>
         /// <param name="markdown">Testo markdown da convertire</param>
         /// <returns>HTML formattato</returns>
@@ -387,7 +423,18 @@ namespace ClaudeCodeMAUI.Utilities
 
             try
             {
-                return Markdown.ToHtml(markdown, _pipeline);
+                // Primo passo: converti markdown in HTML con Markdig
+                var html = Markdown.ToHtml(markdown, _pipeline);
+
+                // Secondo passo: se l'HTML risultante contiene ANSI codes (ad esempio nei code block),
+                // convertili in span HTML colorati
+                if (AnsiToHtmlConverter.ContainsAnsiCodes(html))
+                {
+                    Log.Debug("HTML output contains ANSI codes, converting to colored spans");
+                    html = AnsiToHtmlConverter.Convert(html);
+                }
+
+                return html;
             }
             catch (Exception ex)
             {

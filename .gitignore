@@ -63,3 +63,9 @@ $RECYCLE.BIN/
 *.db
 *.db-shm
 *.db-wal
+
+# Claude Code configuration
+.claude/
+
+# Application logs
+ClaudeCodeMAUI/logs/

@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="ClaudeCodeMAUI.ErrorDialog"
+             BackgroundColor="#1E1E1E">
+
+    <Grid Padding="20" RowDefinitions="Auto,*,Auto">
+
+        <!-- Title -->
+        <Label x:Name="LblTitle"
+               Grid.Row="0"
+               Text="Error"
+               FontSize="24"
+               FontAttributes="Bold"
+               TextColor="White"
+               HorizontalOptions="Center"
+               Margin="0,0,0,20" />
+
+        <!-- Scrollable Message Area with selectable text -->
+        <Border Grid.Row="1"
+                Stroke="Gray"
+                StrokeThickness="1"
+                BackgroundColor="#2A2A2A"
+                Padding="15"
+                Margin="0,0,0,20">
+            <ScrollView>
+                <Label x:Name="LblMessage"
+                       TextColor="LightGray"
+                       FontFamily="Consolas"
+                       FontSize="14"
+                       LineBreakMode="WordWrap"
+                       TextType="Text" />
+            </ScrollView>
+        </Border>
+
+        <!-- Buttons -->
+        <HorizontalStackLayout Grid.Row="2"
+                               Spacing="15"
+                               HorizontalOptions="Center">
+            <Button x:Name="BtnCopy"
+                    Text="Copy Error"
+                    Clicked="OnCopyClicked"
+                    BackgroundColor="#4A4A4A"
+                    TextColor="White"
+                    WidthRequest="150"
+                    HeightRequest="45"
+                    CornerRadius="8" />
+
+            <Button x:Name="BtnOk"
+                    Text="OK"
+                    Clicked="OnOkClicked"
+                    BackgroundColor="#E74C3C"
+                    TextColor="White"
+                    WidthRequest="120"
+                    HeightRequest="45"
+                    CornerRadius="8" />
+        </HorizontalStackLayout>
+
+    </Grid>
+
+</ContentPage>

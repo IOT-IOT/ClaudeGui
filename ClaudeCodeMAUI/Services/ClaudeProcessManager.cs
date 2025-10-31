@@ -35,7 +35,7 @@ namespace ClaudeCodeMAUI.Services
         private bool _isRunning;
         private bool _wasKilled;
         private readonly string? _sessionId;
-        private readonly bool _isPlanMode;
+        //private readonly bool _isPlanMode;
         private readonly string? _dbSessionId; // For DB updates
 
         // Events
@@ -46,12 +46,11 @@ namespace ClaudeCodeMAUI.Services
         /// <summary>
         /// Constructor
         /// </summary>
-        /// <param name="isPlanMode">Whether to start in plan mode</param>
         /// <param name="resumeSessionId">Optional session ID to resume</param>
         /// <param name="dbSessionId">Session ID for DB operations (for fire-and-forget updates)</param>
-        public ClaudeProcessManager(bool isPlanMode = false, string? resumeSessionId = null, string? dbSessionId = null)
+        public ClaudeProcessManager(string? resumeSessionId = null, string? dbSessionId = null)
         {
-            _isPlanMode = isPlanMode;
+            
             _sessionId = resumeSessionId;
             _dbSessionId = dbSessionId;
             _isRunning = false;
@@ -83,9 +82,10 @@ namespace ClaudeCodeMAUI.Services
                     CreateNoWindow = true,
                     StandardOutputEncoding = Encoding.UTF8,
                     StandardErrorEncoding = Encoding.UTF8,
-                    WorkingDirectory = @"C:\Sources\ClaudeGui"
+                    WorkingDirectory = AppConfig.ClaudeWorkingDirectory
                 };
-                Log.Information("ProcessStartInfo created with Arguments: {Args}", startInfo.Arguments);
+                Log.Information("ProcessStartInfo created with Arguments: {Args}, WorkingDirectory: {WorkingDir}",
+                    startInfo.Arguments, startInfo.WorkingDirectory);
 
                 Log.Information("Creating Process object...");
                 _process = new Process { StartInfo = startInfo };
@@ -106,7 +106,7 @@ namespace ClaudeCodeMAUI.Services
                 _ = Task.Run(async () => await ReadStderrAsync());
 
                 Log.Information("Claude process started (PID: {ProcessId}, PlanMode: {PlanMode}, Resume: {Resume})",
-                                _process.Id, _isPlanMode, _sessionId ?? "none");
+                                _process.Id,  _sessionId ?? "none");
             }
             catch (Exception ex)
             {
@@ -127,11 +127,7 @@ namespace ClaudeCodeMAUI.Services
             args.Append("--output-format stream-json ");
             args.Append("--verbose ");
             args.Append("--dangerously-skip-permissions ");
-
-            if (_isPlanMode)
-            {
-                args.Append("--permission-mode plan ");
-            }
+            //args.Append("--context-mode auto-compact "); // Gestione automatica del contesto con compattazione
 
             if (!string.IsNullOrEmpty(_sessionId))
             {

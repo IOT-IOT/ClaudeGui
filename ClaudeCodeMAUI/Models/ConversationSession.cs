@@ -27,11 +27,6 @@ namespace ClaudeCodeMAUI.Models
         public string TabTitle { get; set; } = "New Conversation";
 
         /// <summary>
-        /// Whether plan mode is active for this session
-        /// </summary>
-        public bool IsPlanMode { get; set; } = false;
-
-        /// <summary>
         /// Last activity timestamp (updated periodically)
         /// </summary>
         public DateTime LastActivity { get; set; } = DateTime.Now;

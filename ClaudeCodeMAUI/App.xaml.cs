@@ -7,15 +7,26 @@ public partial class App : Application
 {
 	private DbService? _dbService;
 	private string? _currentSessionId;
+	private SettingsService _settingsService;
+	private Window? _mainWindow;
 
 	public App()
 	{
 		InitializeComponent();
+		_settingsService = new SettingsService();
 	}
 
 	protected override Window CreateWindow(IActivationState? activationState)
 	{
-		return new Window(new AppShell());
+		_mainWindow = new Window(new AppShell());
+
+		// Carica e applica la posizione e dimensione salvate della finestra
+		RestoreWindowBounds();
+
+		// Sottoscrivi agli eventi per salvare posizione/dimensione quando cambiano
+		SubscribeToWindowEvents();
+
+		return _mainWindow;
 	}
 
 	/// <summary>
@@ -30,6 +41,104 @@ public partial class App : Application
 	}
 
 	/// <summary>
+	/// Ripristina la posizione e dimensione della finestra dalle impostazioni salvate.
+	/// Se non ci sono impostazioni salvate, usa i valori di default.
+	/// </summary>
+	private void RestoreWindowBounds()
+	{
+		if (_mainWindow == null) return;
+
+		try
+		{
+			// Recupera la posizione salvata
+			var position = _settingsService.GetWindowPosition();
+			if (position.HasValue)
+			{
+				_mainWindow.X = position.Value.X;
+				_mainWindow.Y = position.Value.Y;
+				Log.Information("App: Posizione finestra ripristinata - X={X}, Y={Y}", position.Value.X, position.Value.Y);
+			}
+
+			// Recupera le dimensioni salvate
+			var size = _settingsService.GetWindowSize();
+			if (size.HasValue)
+			{
+				_mainWindow.Width = size.Value.Width;
+				_mainWindow.Height = size.Value.Height;
+				Log.Information("App: Dimensioni finestra ripristinate - Width={Width}, Height={Height}", size.Value.Width, size.Value.Height);
+			}
+			else
+			{
+				// Dimensioni di default se non ci sono impostazioni salvate
+				_mainWindow.Width = 1400;
+				_mainWindow.Height = 900;
+				Log.Information("App: Usate dimensioni di default - Width=1400, Height=900");
+			}
+		}
+		catch (Exception ex)
+		{
+			Log.Error(ex, "App: Errore durante il ripristino dei bounds della finestra");
+		}
+	}
+
+	/// <summary>
+	/// Sottoscrivi agli eventi della finestra per salvare posizione e dimensione quando cambiano.
+	/// </summary>
+	private void SubscribeToWindowEvents()
+	{
+		if (_mainWindow == null) return;
+
+		// Salva la posizione quando cambia
+		_mainWindow.PropertyChanged += (sender, e) =>
+		{
+			if (e.PropertyName == nameof(Window.X) || e.PropertyName == nameof(Window.Y))
+			{
+				SaveWindowPosition();
+			}
+			else if (e.PropertyName == nameof(Window.Width) || e.PropertyName == nameof(Window.Height))
+			{
+				SaveWindowSize();
+			}
+		};
+
+		Log.Information("App: Sottoscritto agli eventi della finestra per il salvataggio automatico");
+	}
+
+	/// <summary>
+	/// Salva la posizione corrente della finestra nelle impostazioni.
+	/// </summary>
+	private void SaveWindowPosition()
+	{
+		if (_mainWindow == null) return;
+
+		try
+		{
+			_settingsService.SaveWindowPosition(_mainWindow.X, _mainWindow.Y);
+		}
+		catch (Exception ex)
+		{
+			Log.Error(ex, "App: Errore durante il salvataggio della posizione della finestra");
+		}
+	}
+
+	/// <summary>
+	/// Salva le dimensioni correnti della finestra nelle impostazioni.
+	/// </summary>
+	private void SaveWindowSize()
+	{
+		if (_mainWindow == null) return;
+
+		try
+		{
+			_settingsService.SaveWindowSize(_mainWindow.Width, _mainWindow.Height);
+		}
+		catch (Exception ex)
+		{
+			Log.Error(ex, "App: Errore durante il salvataggio delle dimensioni della finestra");
+		}
+	}
+
+	/// <summary>
 	/// Chiamato quando l'applicazione va in background o viene chiusa.
 	/// Marca la sessione corrente come "closed" nel database per recovery futuro.
 	/// </summary>
@@ -38,6 +147,10 @@ public partial class App : Application
 		base.OnSleep();
 
 		Log.Information("App: OnSleep called");
+
+		// Salva la posizione e dimensione finali prima di chiudere
+		SaveWindowPosition();
+		SaveWindowSize();
 
 		// Marca la sessione corrente come closed se presente
 		if (_dbService != null && !string.IsNullOrEmpty(_currentSessionId))
