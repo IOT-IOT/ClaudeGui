@@ -38,12 +38,15 @@ public partial class SettingsPage : ContentPage
     /// </summary>
     private void LoadCurrentSettings()
     {
+        SwitchShowResumeDialog.IsToggled = _settingsService.ShowResumeDialog;
         SwitchAutoSummary.IsToggled = _settingsService.AutoSendSummaryPrompt;
         SwitchDarkTheme.IsToggled = _settingsService.IsDarkTheme;
         SwitchPlayBeep.IsToggled = _settingsService.PlayBeepOnMetadata;
+        SliderHistoryCount.Value = _settingsService.HistoryMessageCount;
+        LblHistoryCount.Text = _settingsService.HistoryMessageCount.ToString();
 
-        Log.Debug("SettingsPage: Impostazioni caricate - AutoSummary={AutoSummary}, DarkTheme={DarkTheme}, PlayBeep={PlayBeep}",
-            SwitchAutoSummary.IsToggled, SwitchDarkTheme.IsToggled, SwitchPlayBeep.IsToggled);
+        Log.Debug("SettingsPage: Impostazioni caricate - ShowResumeDialog={ShowResumeDialog}, AutoSummary={AutoSummary}, DarkTheme={DarkTheme}, PlayBeep={PlayBeep}, HistoryCount={HistoryCount}",
+            SwitchShowResumeDialog.IsToggled, SwitchAutoSummary.IsToggled, SwitchDarkTheme.IsToggled, SwitchPlayBeep.IsToggled, _settingsService.HistoryMessageCount);
     }
 
     /// <summary>
@@ -59,20 +62,32 @@ public partial class SettingsPage : ContentPage
             if (File.Exists(versionFile))
             {
                 var version = File.ReadAllText(versionFile).Trim();
-                LblVersion.Text = $"Version: {version}";
+                LblVersion.Text = $"Versione: {version}";
                 Log.Information("SettingsPage: Versione caricata: {Version}", version);
             }
             else
             {
                 Log.Warning("SettingsPage: File BuildVersion.txt non trovato in {Path}", versionFile);
-                LblVersion.Text = "Version: Unknown";
+                LblVersion.Text = "Versione: Sconosciuta";
             }
         }
         catch (Exception ex)
         {
             Log.Error(ex, "SettingsPage: Errore durante il caricamento della versione");
-            LblVersion.Text = "Version: Error";
+            LblVersion.Text = "Versione: Errore";
         }
+    }
+
+    /// <summary>
+    /// Handler per il toggle dell'impostazione "Show Resume Dialog".
+    /// </summary>
+    private void OnShowResumeDialogToggled(object sender, ToggledEventArgs e)
+    {
+        _settingsService.ShowResumeDialog = e.Value;
+        Log.Information("SettingsPage: ShowResumeDialog modificato a {Value}", e.Value);
+
+        // Notifica il cambiamento
+        _onSettingsChanged?.Invoke();
     }
 
     /// <summary>
@@ -112,6 +127,27 @@ public partial class SettingsPage : ContentPage
     }
 
     /// <summary>
+    /// Handler per il cambio del valore dello slider "History Message Count".
+    /// Aggiorna sia l'impostazione che la label con il valore corrente.
+    /// </summary>
+    private void OnHistoryCountChanged(object sender, ValueChangedEventArgs e)
+    {
+        // Arrotonda il valore a un intero
+        int newValue = (int)Math.Round(e.NewValue);
+
+        // Aggiorna la label con il nuovo valore
+        LblHistoryCount.Text = newValue.ToString();
+
+        // Salva il nuovo valore nelle impostazioni
+        _settingsService.HistoryMessageCount = newValue;
+
+        Log.Information("SettingsPage: HistoryMessageCount modificato a {Value}", newValue);
+
+        // Notifica il cambiamento
+        _onSettingsChanged?.Invoke();
+    }
+
+    /// <summary>
     /// Handler per il pulsante "Reset to Defaults".
     /// Ripristina tutte le impostazioni ai valori di default.
     /// </summary>
@@ -119,10 +155,10 @@ public partial class SettingsPage : ContentPage
     {
         // Chiedi conferma all'utente
         bool confirm = await DisplayAlert(
-            "Reset Settings",
-            "Are you sure you want to reset all settings to their default values?",
-            "Yes",
-            "Cancel");
+            "Ripristina impostazioni",
+            "Sei sicuro di voler ripristinare tutte le impostazioni ai valori predefiniti?",
+            "Sì",
+            "Annulla");
 
         if (confirm)
         {
@@ -130,7 +166,7 @@ public partial class SettingsPage : ContentPage
             LoadCurrentSettings();
             _onSettingsChanged?.Invoke();
 
-            await DisplayAlert("Success", "Settings have been reset to defaults.", "OK");
+            await DisplayAlert("Successo", "Le impostazioni sono state ripristinate ai valori predefiniti.", "OK");
             Log.Information("SettingsPage: Impostazioni resettate ai valori di default");
         }
     }

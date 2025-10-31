@@ -2,7 +2,7 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="ClaudeCodeMAUI.SettingsPage"
-             Title="Settings"
+             Title="Impostazioni"
              BackgroundColor="{DynamicResource PageBackgroundColor}">
 
     <ScrollView>
@@ -10,16 +10,16 @@
 
             <!-- Header -->
             <VerticalStackLayout Spacing="5">
-                <Label Text="⚙️ Settings"
+                <Label Text="⚙️ Impostazioni"
                        FontSize="28"
                        FontAttributes="Bold"
                        TextColor="{DynamicResource PrimaryTextColor}" />
-                <Label Text="Configure your Claude Code GUI experience"
+                <Label Text="Configura la tua esperienza con Claude Code GUI"
                        FontSize="14"
                        TextColor="{DynamicResource SecondaryTextColor}" />
             </VerticalStackLayout>
 
-            <!-- Sezione: Session Recovery -->
+            <!-- Sezione: Ripristino Sessioni -->
             <Frame BorderColor="{DynamicResource BorderColor}"
                    CornerRadius="10"
                    Padding="15"
@@ -28,18 +28,35 @@
                 <VerticalStackLayout Spacing="15">
 
                     <!-- Titolo sezione -->
-                    <Label Text="🔄 Session Recovery"
+                    <Label Text="🔄 Ripristino Sessioni"
                            FontSize="18"
                            FontAttributes="Bold"
                            TextColor="{DynamicResource PrimaryTextColor}" />
 
-                    <!-- Opzione 1: Auto Send Summary Prompt -->
+                    <!-- Opzione 1: Show Resume Dialog -->
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
                         <VerticalStackLayout Grid.Column="0" VerticalOptions="Center">
-                            <Label Text="Auto-send summary prompt"
+                            <Label Text="Mostra dialog di ripristino sessione"
                                    FontSize="16"
                                    TextColor="{DynamicResource PrimaryTextColor}" />
-                            <Label Text="Automatically ask Claude for a summary when resuming a session"
+                            <Label Text="Se disattivato, riprende automaticamente l'ultima sessione all'avvio"
+                                   FontSize="12"
+                                   TextColor="{DynamicResource SecondaryTextColor}"
+                                   Margin="0,2,0,0" />
+                        </VerticalStackLayout>
+                        <Switch x:Name="SwitchShowResumeDialog"
+                                Grid.Column="1"
+                                VerticalOptions="Center"
+                                Toggled="OnShowResumeDialogToggled" />
+                    </Grid>
+
+                    <!-- Opzione 2: Auto Send Summary Prompt -->
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                        <VerticalStackLayout Grid.Column="0" VerticalOptions="Center">
+                            <Label Text="Invia automaticamente prompt di riassunto"
+                                   FontSize="16"
+                                   TextColor="{DynamicResource PrimaryTextColor}" />
+                            <Label Text="Chiede automaticamente a Claude un riassunto quando si riprende una sessione"
                                    FontSize="12"
                                    TextColor="{DynamicResource SecondaryTextColor}"
                                    Margin="0,2,0,0" />
@@ -50,13 +67,13 @@
                                 Toggled="OnAutoSummaryToggled" />
                     </Grid>
 
-                    <!-- Opzione 2: Play Beep on Metadata -->
+                    <!-- Opzione 3: Play Beep on Metadata -->
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
                         <VerticalStackLayout Grid.Column="0" VerticalOptions="Center">
-                            <Label Text="Play beep on metadata"
+                            <Label Text="Riproduci beep su metadata"
                                    FontSize="16"
                                    TextColor="{DynamicResource PrimaryTextColor}" />
-                            <Label Text="Play a sound notification when response statistics are received"
+                            <Label Text="Emette una notifica sonora quando arrivano le statistiche della risposta"
                                    FontSize="12"
                                    TextColor="{DynamicResource SecondaryTextColor}"
                                    Margin="0,2,0,0" />
@@ -67,10 +84,39 @@
                                 Toggled="OnPlayBeepToggled" />
                     </Grid>
 
+                    <!-- Opzione 4: History Message Count -->
+                    <Grid ColumnDefinitions="*,Auto,60" ColumnSpacing="10">
+                        <VerticalStackLayout Grid.Column="0" VerticalOptions="Center">
+                            <Label Text="Numero messaggi storici"
+                                   FontSize="16"
+                                   TextColor="{DynamicResource PrimaryTextColor}" />
+                            <Label Text="Quanti messaggi precedenti visualizzare al ripristino sessione (0-50)"
+                                   FontSize="12"
+                                   TextColor="{DynamicResource SecondaryTextColor}"
+                                   Margin="0,2,0,0" />
+                        </VerticalStackLayout>
+                        <Slider x:Name="SliderHistoryCount"
+                                Grid.Column="1"
+                                Minimum="0"
+                                Maximum="50"
+                                Value="10"
+                                WidthRequest="150"
+                                VerticalOptions="Center"
+                                ValueChanged="OnHistoryCountChanged" />
+                        <Label x:Name="LblHistoryCount"
+                               Grid.Column="2"
+                               Text="10"
+                               FontSize="16"
+                               FontAttributes="Bold"
+                               TextColor="{DynamicResource PrimaryTextColor}"
+                               VerticalOptions="Center"
+                               HorizontalOptions="Center" />
+                    </Grid>
+
                 </VerticalStackLayout>
             </Frame>
 
-            <!-- Sezione: Appearance -->
+            <!-- Sezione: Aspetto -->
             <Frame BorderColor="{DynamicResource BorderColor}"
                    CornerRadius="10"
                    Padding="15"
@@ -79,18 +125,18 @@
                 <VerticalStackLayout Spacing="15">
 
                     <!-- Titolo sezione -->
-                    <Label Text="🎨 Appearance"
+                    <Label Text="🎨 Aspetto"
                            FontSize="18"
                            FontAttributes="Bold"
                            TextColor="{DynamicResource PrimaryTextColor}" />
 
-                    <!-- Opzione 2: Dark Theme -->
+                    <!-- Opzione: Dark Theme -->
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
                         <VerticalStackLayout Grid.Column="0" VerticalOptions="Center">
-                            <Label Text="Dark theme"
+                            <Label Text="Tema scuro"
                                    FontSize="16"
                                    TextColor="{DynamicResource PrimaryTextColor}" />
-                            <Label Text="Use dark theme for the conversation view"
+                            <Label Text="Usa il tema scuro per la visualizzazione della conversazione"
                                    FontSize="12"
                                    TextColor="{DynamicResource SecondaryTextColor}"
                                    Margin="0,2,0,0" />
@@ -104,7 +150,7 @@
                 </VerticalStackLayout>
             </Frame>
 
-            <!-- Sezione: About -->
+            <!-- Sezione: Informazioni -->
             <Frame BorderColor="{DynamicResource BorderColor}"
                    CornerRadius="10"
                    Padding="15"
@@ -113,7 +159,7 @@
                 <VerticalStackLayout Spacing="10">
 
                     <!-- Titolo sezione -->
-                    <Label Text="ℹ️ About"
+                    <Label Text="ℹ️ Informazioni"
                            FontSize="18"
                            FontAttributes="Bold"
                            TextColor="{DynamicResource PrimaryTextColor}" />
@@ -124,11 +170,11 @@
                            TextColor="{DynamicResource PrimaryTextColor}" />
 
                     <Label x:Name="LblVersion"
-                           Text="Version: 1.0.0"
+                           Text="Versione: 1.0.0"
                            FontSize="14"
                            TextColor="{DynamicResource SecondaryTextColor}" />
 
-                    <Label Text="A modern GUI for Claude Code with session recovery, markdown rendering, and more."
+                    <Label Text="Una GUI moderna per Claude Code con ripristino sessioni, rendering markdown e altro."
                            FontSize="12"
                            TextColor="{DynamicResource SecondaryTextColor}"
                            LineBreakMode="WordWrap" />
@@ -138,13 +184,13 @@
 
             <!-- Pulsanti azione -->
             <HorizontalStackLayout Spacing="10" HorizontalOptions="Center">
-                <Button Text="Reset to Defaults"
+                <Button Text="Ripristina impostazioni predefinite"
                         Clicked="OnResetToDefaults"
                         BackgroundColor="#FF6B6B"
                         TextColor="White"
                         CornerRadius="5"
                         Padding="15,10" />
-                <Button Text="Close"
+                <Button Text="Chiudi"
                         Clicked="OnClose"
                         BackgroundColor="#4ECDC4"
                         TextColor="White"

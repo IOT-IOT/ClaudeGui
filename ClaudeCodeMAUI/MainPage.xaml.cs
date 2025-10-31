@@ -15,6 +15,7 @@ public partial class MainPage : ContentPage
     private ClaudeProcessManager? _processManager;
     private StreamJsonParser? _parser;
     private ConversationSession? _currentSession;
+    private SessionTokenTracker? _tokenTracker;  // Tracker per monitorare l'utilizzo del contesto
     private bool _isPlanMode;
     private MarkdownHtmlRenderer? _htmlRenderer;
     private bool _isDarkTheme = true;  // Default tema scuro
@@ -31,6 +32,28 @@ public partial class MainPage : ContentPage
         InitializeComponent();
         _settingsService = new SettingsService();
         Log.Information("MainPage initialized");
+    }
+
+    /// <summary>
+    /// Mostra un dialog di errore con testo copiabile.
+    /// Da usare al posto di DisplayAlert per errori che l'utente potrebbe voler copiare.
+    /// </summary>
+    /// <param name="title">Titolo dell'errore</param>
+    /// <param name="message">Messaggio di errore dettagliato</param>
+    private async Task ShowCopyableErrorAsync(string title, string message)
+    {
+        try
+        {
+            var errorDialog = new ErrorDialog();
+            errorDialog.SetError(title, message);
+            await Navigation.PushModalAsync(new NavigationPage(errorDialog));
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to show copyable error dialog, falling back to DisplayAlert");
+            // Fallback al DisplayAlert standard se il dialog custom fallisce
+            await DisplayAlert(title, message, "OK");
+        }
     }
 
     public MainPage(DbService dbService) : this()
@@ -117,6 +140,164 @@ public partial class MainPage : ContentPage
     {
         _isPlanMode = e.Value;
         Log.Information("Plan mode toggled: {IsPlanMode}", _isPlanMode);
+    }
+
+    /// <summary>
+    /// Handler per il click sul pulsante Context Info.
+    /// Esegue il comando /context e mostra le informazioni dettagliate in un popup.
+    /// </summary>
+    private async void OnContextInfoClicked(object? sender, EventArgs e)
+    {
+        try
+        {
+            Log.Information("Context Info button clicked");
+
+            // Verifica che ci sia una sessione corrente
+            if (_currentSession == null || string.IsNullOrWhiteSpace(_currentSession.SessionId))
+            {
+                Log.Warning("No active session for context info");
+                await ShowCopyableErrorAsync("No Active Session", "There is no active session. Start a new conversation first.");
+                return;
+            }
+
+            var sessionId = _currentSession.SessionId;
+            Log.Information("Getting context info for session: {SessionId}", sessionId);
+
+            // Mostra indicatore di caricamento
+            LblStatus.Text = "Loading context info...";
+            LblStatus.TextColor = Colors.Blue;
+            BtnContextInfo.IsEnabled = false;
+
+            try
+            {
+                // Esegui comando /context
+                // Nota: timeout aumentato a 15 secondi perché modalità interattiva richiede più tempo
+                var runner = new ClaudeCodeMAUI.Services.ClaudeCommandRunner();
+                var output = await runner.ExecuteCommandAsync(
+                    sessionId,
+                    "/context",
+                    ClaudeCodeMAUI.Services.AppConfig.ClaudeWorkingDirectory,
+                    timeoutMs: 15000  // 15 secondi timeout (interattivo richiede più tempo)
+                );
+
+                Log.Information("Command completed, output length: {Length} chars", output.Length);
+
+                // Debug: Log output per troubleshooting
+                if (string.IsNullOrWhiteSpace(output))
+                {
+                    Log.Error("Output is empty! This should not happen.");
+                }
+
+                // Parse output
+                var parser = new ClaudeCodeMAUI.Services.ContextOutputParser();
+                var info = parser.Parse(output);
+
+                Log.Information("Parsing completed successfully");
+
+                // Mostra popup con le informazioni
+                var contextPage = new ContextInfoPage();
+                contextPage.SetContextInfo(info);
+                await Navigation.PushModalAsync(new NavigationPage(contextPage));
+
+                Log.Information("Context info page displayed");
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to get or parse context info");
+                await ShowCopyableErrorAsync("Context Info Error", $"Failed to get context information:\n\n{ex.Message}\n\nStack Trace:\n{ex.StackTrace}");
+            }
+            finally
+            {
+                // Ripristina UI
+                LblStatus.Text = "Ready";
+                LblStatus.TextColor = Colors.Gray;
+                BtnContextInfo.IsEnabled = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Unexpected error in OnContextInfoClicked");
+            await ShowCopyableErrorAsync("Unexpected Error", $"Unexpected error: {ex.Message}\n\nStack Trace:\n{ex.StackTrace}");
+        }
+    }
+
+    /// <summary>
+    /// Handler per il click sul pulsante Terminal.
+    /// Lancia un terminale Windows con il comando claude --resume [Context ID].
+    /// </summary>
+    private async void OnTerminalClicked(object? sender, EventArgs e)
+    {
+        try
+        {
+            Log.Information("Opening terminal with resume command");
+
+            // Verifica che ci sia una sessione corrente
+            if (_currentSession == null || string.IsNullOrWhiteSpace(_currentSession.SessionId))
+            {
+                Log.Warning("No active session to resume");
+                await DisplayAlert("No Active Session", "There is no active session to resume. Start a new conversation first.", "OK");
+                return;
+            }
+
+            var sessionId = _currentSession.SessionId;
+            var workingDir = ClaudeCodeMAUI.Services.AppConfig.ClaudeWorkingDirectory;
+
+            // Comando da eseguire nel terminale
+            var command = $"claude --resume {sessionId}";
+
+            Log.Information("Launching terminal with command: {Command} in directory: {WorkingDir}", command, workingDir);
+
+#if WINDOWS
+            // Su Windows, usa Windows Terminal se disponibile, altrimenti cmd.exe
+            // Windows Terminal: wt.exe -d "path" cmd /k "command"
+            // Cmd.exe: cmd.exe /k "cd /d path && command"
+
+            try
+            {
+                // Prova prima con Windows Terminal
+                var processInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "wt.exe",
+                    Arguments = $"-d \"{workingDir}\" cmd /k \"{command}\"",
+                    UseShellExecute = true
+                };
+
+                System.Diagnostics.Process.Start(processInfo);
+                Log.Information("Terminal launched successfully using Windows Terminal");
+            }
+            catch (Exception wtEx)
+            {
+                // Fallback a cmd.exe se Windows Terminal non è disponibile
+                Log.Warning(wtEx, "Windows Terminal not available, falling back to cmd.exe");
+
+                var processInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = $"/k \"cd /d \"{workingDir}\" && {command}\"",
+                    UseShellExecute = true
+                };
+
+                System.Diagnostics.Process.Start(processInfo);
+                Log.Information("Terminal launched successfully using cmd.exe");
+            }
+#else
+            // Su altre piattaforme (Linux/Mac), usa il terminale di default
+            var processInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "bash",
+                Arguments = $"-c \"cd '{workingDir}' && {command}\"",
+                UseShellExecute = true
+            };
+
+            System.Diagnostics.Process.Start(processInfo);
+            Log.Information("Terminal launched successfully");
+#endif
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Error launching terminal");
+            await DisplayAlert("Error", $"Failed to launch terminal: {ex.Message}", "OK");
+        }
     }
 
     /// <summary>
@@ -212,6 +393,23 @@ public partial class MainPage : ContentPage
         }
     }
 
+    /// <summary>
+    /// Aggiorna la barra superiore con il Context ID corrente.
+    /// </summary>
+    private void UpdateContextId(string contextId)
+    {
+        try
+        {
+            ContextIdLabel.Text = $"Context ID: {contextId}";
+            Log.Information("Context ID updated: {ContextId}", contextId);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to update Context ID");
+            ContextIdLabel.Text = "Context ID: <error>";
+        }
+    }
+
     protected override async void OnAppearing()
     {
         base.OnAppearing();
@@ -290,16 +488,28 @@ public partial class MainPage : ContentPage
             Log.Information("Most recent session: {SessionId}, Last activity: {LastActivity}",
                 lastSession.SessionId, lastSession.LastActivity);
 
-            // 3. Chiedi all'utente se vuole riprendere
-            var resume = await DisplayAlert(
-                "Resume Session?",
-                $"Found previous session from {lastSession.LastActivity:g}\n" +
-                $"Status: {lastSession.Status}\n\n" +
-                "Do you want to resume it?",
-                "Yes", "No"
-            );
+            // 3. Controlla se mostrare il dialog o riprendere automaticamente
+            bool shouldResume = false;
 
-            if (resume)
+            if (_settingsService != null && _settingsService.ShowResumeDialog)
+            {
+                // Mostra il dialog in italiano
+                shouldResume = await DisplayAlert(
+                    "Riprendere la sessione?",
+                    $"Trovata sessione precedente del {lastSession.LastActivity:g}\n" +
+                    $"Stato: {lastSession.Status}\n\n" +
+                    "Vuoi riprenderla?",
+                    "Sì", "No"
+                );
+            }
+            else
+            {
+                // Riprendi automaticamente senza chiedere
+                shouldResume = true;
+                Log.Information("ShowResumeDialog is OFF, resuming automatically");
+            }
+
+            if (shouldResume)
             {
                 Log.Information("User chose to resume session {SessionId}", lastSession.SessionId);
                 // 4. Riprendi la sessione
@@ -335,9 +545,10 @@ public partial class MainPage : ContentPage
 
             // 1. Imposta sessione corrente
             _currentSession = session;
-            _isPlanMode = session.IsPlanMode;
-            SwitchPlanMode.IsToggled = _isPlanMode;
             Log.Information("Session set as current. Plan mode: {IsPlanMode}", _isPlanMode);
+
+            // Aggiorna il Context ID nella barra superiore
+            UpdateContextId(session.SessionId);
 
             // 2. Crea parser
             _parser = new StreamJsonParser();
@@ -350,7 +561,6 @@ public partial class MainPage : ContentPage
 
             // 3. Crea process manager CON resumeSessionId (QUESTO È IL FIX PRINCIPALE!)
             _processManager = new ClaudeProcessManager(
-                _isPlanMode,
                 session.SessionId,  // <<<< Passa il session_id per --resume
                 session.SessionId
             );
@@ -371,6 +581,9 @@ public partial class MainPage : ContentPage
 
             // 6. Attendi che il processo sia pronto
             await Task.Delay(1500);
+
+            // 6.5. Carica e visualizza la storia dei messaggi precedenti
+            await LoadAndDisplayHistoryAsync(session.SessionId);
 
             // 7. Invia prompt di riassunto automatico SOLO se abilitato nelle impostazioni
             if (_settingsService != null && _settingsService.AutoSendSummaryPrompt)
@@ -398,9 +611,82 @@ public partial class MainPage : ContentPage
         }
     }
 
+    /// <summary>
+    /// Carica e visualizza la storia degli ultimi N messaggi di una sessione.
+    /// Chiamato durante il resume di una sessione per mostrare il contesto precedente.
+    /// Il numero di messaggi da caricare è configurabile nelle impostazioni.
+    /// </summary>
+    /// <param name="sessionId">ID della sessione di cui caricare la storia</param>
+    private async Task LoadAndDisplayHistoryAsync(string sessionId)
+    {
+        try
+        {
+            // Verifica che i servizi siano inizializzati
+            if (_dbService == null || _settingsService == null || _htmlRenderer == null)
+            {
+                Log.Warning("LoadAndDisplayHistoryAsync: Servizi non inizializzati, skip caricamento storia");
+                return;
+            }
+
+            // Ottieni il numero di messaggi da caricare dalle impostazioni
+            int messageCount = _settingsService.HistoryMessageCount;
+
+            // Se il conteggio è 0, non caricare nessuna storia
+            if (messageCount <= 0)
+            {
+                Log.Information("LoadAndDisplayHistoryAsync: HistoryMessageCount è 0, skip caricamento storia");
+                return;
+            }
+
+            Log.Information("LoadAndDisplayHistoryAsync: Caricamento ultimi {Count} messaggi per sessione {SessionId}",
+                           messageCount, sessionId);
+
+            // Carica i messaggi dal database
+            var messages = await _dbService.GetLastMessagesAsync(sessionId, messageCount);
+
+            if (messages.Count == 0)
+            {
+                Log.Information("LoadAndDisplayHistoryAsync: Nessun messaggio storico trovato per sessione {SessionId}", sessionId);
+                return;
+            }
+
+            Log.Information("LoadAndDisplayHistoryAsync: Trovati {Count} messaggi storici, renderizzazione in corso...", messages.Count);
+
+            // Renderizza ogni messaggio in ordine cronologico
+            foreach (var message in messages)
+            {
+                string html;
+                if (message.Role == "user")
+                {
+                    html = _htmlRenderer.RenderUserMessage(message.Content);
+                }
+                else // assistant
+                {
+                    html = _htmlRenderer.RenderAssistantMessage(message.Content);
+                }
+
+                await AppendHtmlAsync(html);
+                Log.Debug("LoadAndDisplayHistoryAsync: Messaggio {Sequence} ({Role}) renderizzato", message.Sequence, message.Role);
+            }
+
+            // Aggiungi un separatore visivo per indicare la fine della storia
+            var separatorHtml = _htmlRenderer.RenderSeparator();
+            await AppendHtmlAsync(separatorHtml);
+
+            Log.Information("LoadAndDisplayHistoryAsync: Storia completa visualizzata con successo ({Count} messaggi)", messages.Count);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "LoadAndDisplayHistoryAsync: Errore durante il caricamento della storia");
+            // Non fare throw - il caricamento della storia è opzionale e non deve bloccare il resume
+        }
+    }
+
     private void OnSendMessage(object? sender, EventArgs e)
     {
         var message = InputEditor.Text?.Trim();
+        
+
         if (string.IsNullOrWhiteSpace(message))
             return;
 
@@ -420,7 +706,6 @@ public partial class MainPage : ContentPage
             // Crea nuova sessione
             _currentSession = new ConversationSession
             {
-                IsPlanMode = _isPlanMode,
                 Status = "active",
                 TabTitle = "New Conversation"
             };
@@ -436,7 +721,7 @@ public partial class MainPage : ContentPage
             Log.Information("Parser created");
 
             // Crea process manager
-            _processManager = new ClaudeProcessManager(_isPlanMode, null, null);
+            _processManager = new ClaudeProcessManager(null, null);
             _processManager.JsonLineReceived += OnJsonLineReceived;
             _processManager.ErrorReceived += OnErrorReceived;
             _processManager.ProcessCompleted += OnProcessCompleted;
@@ -507,9 +792,17 @@ public partial class MainPage : ContentPage
                     await AppendHtmlAsync(userMessageHtml);
                 }
 
+                // Salva il messaggio utente nel database se abbiamo sessione attiva e dbService
+                if (_dbService != null && _currentSession != null && !string.IsNullOrEmpty(_currentSession.SessionId))
+                {
+                    await _dbService.SaveMessageAsync(_currentSession.SessionId, "user", message);
+                    Log.Debug("SendMessageAsync: Messaggio user salvato nel DB");
+                }
+
+                var mmm = $"{message}\n {(_isPlanMode ? "PLANMODE=ON" : "PLANMODE=OFF")}";
                 // Invia messaggio a Claude
-                await _processManager.SendMessageAsync(message);
-                Log.Debug("Message sent: {Length} chars", message.Length);
+                await _processManager.SendMessageAsync(mmm);
+                Log.Debug($"Message sent {mmm}: {mmm.Length} chars");
             }
         }
         catch (Exception ex)
@@ -535,6 +828,24 @@ public partial class MainPage : ContentPage
                 {
                     app.SetCurrentSession(_dbService, e.SessionId);
                 }
+            }
+
+            // Aggiorna il Context ID nella barra superiore
+            UpdateContextId(e.SessionId);
+
+            // Inizializza il SessionTokenTracker per monitorare il contesto
+            try
+            {
+                var workingDir = Directory.GetCurrentDirectory();
+                _tokenTracker = new SessionTokenTracker(e.SessionId, workingDir);
+                Log.Information("SessionTokenTracker initialized for session: {SessionId}", e.SessionId);
+
+                // Aggiorna subito il display (anche se probabilmente a 0 token inizialmente)
+                UpdateTokenBudgetDisplay();
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to initialize SessionTokenTracker");
             }
 
             // Mostra messaggio solo la PRIMA volta
@@ -571,6 +882,13 @@ public partial class MainPage : ContentPage
                     Log.Information("OnTextReceived: HTML generated ({Length} chars), calling AppendHtmlAsync...", html.Length);
                     await AppendHtmlAsync(html);
                     Log.Information("OnTextReceived: AppendHtmlAsync completed");
+
+                    // Salva il messaggio assistant nel database se abbiamo sessione attiva e dbService
+                    if (_dbService != null && _currentSession != null && !string.IsNullOrEmpty(_currentSession.SessionId))
+                    {
+                        await _dbService.SaveMessageAsync(_currentSession.SessionId, "assistant", e.Text);
+                        Log.Debug("OnTextReceived: Messaggio assistant salvato nel DB");
+                    }
                 }
                 else
                 {
@@ -679,6 +997,9 @@ public partial class MainPage : ContentPage
                     ConversationWebView.Source = new HtmlWebViewSource { Html = fullHtml };
                     Log.Information("WebView reloaded with metadata appended");
                 }
+
+                // Aggiorna il display del budget token
+                UpdateTokenBudgetDisplay();
             }
         });
     }
@@ -1039,6 +1360,54 @@ public partial class MainPage : ContentPage
         html = html.Replace("${", "\\${");
 
         return html;
+    }
+
+    /// <summary>
+    /// Aggiorna il display del budget token leggendo il file JSONL della sessione corrente
+    /// </summary>
+    private void UpdateTokenBudgetDisplay()
+    {
+        if (_tokenTracker == null)
+        {
+            TokenBudgetLabel.Text = "Context: N/A";
+            TokenBudgetLabel.TextColor = Colors.Gray;
+            return;
+        }
+
+        try
+        {
+            // Calcola l'utilizzo dei token dal file JSONL
+            var usage = _tokenTracker.CalculateUsage();
+
+            if (!usage.IsValid)
+            {
+                TokenBudgetLabel.Text = "Context: calculating...";
+                TokenBudgetLabel.TextColor = Colors.Gray;
+                return;
+            }
+
+            // Formatta il testo con migliaia separate e percentuale
+            var text = $"Context: {usage.TotalTokens:N0} / {usage.TotalBudget:N0} ({usage.PercentageUsed:F1}%)";
+            TokenBudgetLabel.Text = text;
+
+            // Cambia colore in base al warning level
+            TokenBudgetLabel.TextColor = usage.GetWarningLevel() switch
+            {
+                WarningLevel.None => Colors.LightGreen,      // 0-70%
+                WarningLevel.Low => Colors.Yellow,           // 70-85%
+                WarningLevel.Medium => Colors.Orange,        // 85-95%
+                WarningLevel.High => Colors.Red,             // 95-100%
+                _ => Colors.Gray
+            };
+
+            Log.Debug("Token budget updated: {Text}, Level: {Level}", text, usage.GetWarningLevel());
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to update token budget display");
+            TokenBudgetLabel.Text = "Context: error";
+            TokenBudgetLabel.TextColor = Colors.Gray;
+        }
     }
 
 }

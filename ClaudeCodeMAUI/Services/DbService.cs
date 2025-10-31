@@ -78,8 +78,8 @@ namespace ClaudeCodeMAUI.Services
         public async Task InsertSessionAsync(ConversationSession session)
         {
             const string sql = @"
-                INSERT INTO conversations (session_id, tab_title, is_plan_mode, last_activity, status)
-                VALUES (@SessionId, @TabTitle, @IsPlanMode, @LastActivity, @Status)";
+                INSERT INTO conversations (session_id, tab_title, last_activity, status)
+                VALUES (@SessionId, @TabTitle,  @LastActivity, @Status)";
 
             try
             {
@@ -89,7 +89,6 @@ namespace ClaudeCodeMAUI.Services
                 using var command = new MySqlCommand(sql, connection);
                 command.Parameters.AddWithValue("@SessionId", session.SessionId);
                 command.Parameters.AddWithValue("@TabTitle", session.TabTitle);
-                command.Parameters.AddWithValue("@IsPlanMode", session.IsPlanMode);
                 command.Parameters.AddWithValue("@LastActivity", session.LastActivity);
                 command.Parameters.AddWithValue("@Status", session.Status);
 
@@ -173,42 +172,13 @@ namespace ClaudeCodeMAUI.Services
         }
 
         /// <summary>
-        /// Updates the plan mode flag for a session.
-        /// </summary>
-        public async Task UpdatePlanModeAsync(string sessionId, bool isPlanMode)
-        {
-            const string sql = @"
-                UPDATE conversations
-                SET is_plan_mode = @IsPlanMode, updated_at = NOW()
-                WHERE session_id = @SessionId";
-
-            try
-            {
-                using var connection = new MySqlConnection(_connectionString);
-                await connection.OpenAsync();
-
-                using var command = new MySqlCommand(sql, connection);
-                command.Parameters.AddWithValue("@IsPlanMode", isPlanMode);
-                command.Parameters.AddWithValue("@SessionId", sessionId);
-
-                await command.ExecuteNonQueryAsync();
-
-                Log.Information("Updated plan mode for {SessionId}: {IsPlanMode}", sessionId, isPlanMode);
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "Failed to update plan mode: {SessionId}", sessionId);
-            }
-        }
-
-        /// <summary>
         /// Retrieves all active or killed conversation sessions for recovery.
         /// Called at app startup to recover sessions after crash/close.
         /// </summary>
         public async Task<List<ConversationSession>> GetActiveConversationsAsync()
         {
             const string sql = @"
-                SELECT id, session_id, tab_title, is_plan_mode, last_activity, status, created_at, updated_at
+                SELECT id, session_id, tab_title, last_activity, status, created_at, updated_at
                 FROM conversations
                 WHERE status IN ('active', 'killed')
                 ORDER BY last_activity DESC";
@@ -234,7 +204,6 @@ namespace ClaudeCodeMAUI.Services
                         TabTitle = reader.IsDBNull(tabTitleOrdinal)
                             ? "Untitled"
                             : reader.GetString(tabTitleOrdinal),
-                        IsPlanMode = reader.GetBoolean(reader.GetOrdinal("is_plan_mode")),
                         LastActivity = reader.GetDateTime(reader.GetOrdinal("last_activity")),
                         Status = reader.GetString(reader.GetOrdinal("status")),
                         CreatedAt = reader.GetDateTime(reader.GetOrdinal("created_at")),
@@ -294,6 +263,127 @@ namespace ClaudeCodeMAUI.Services
             catch (Exception ex)
             {
                 Log.Error(ex, "Failed to batch update session status");
+            }
+        }
+
+        /// <summary>
+        /// Salva un messaggio nella tabella messages.
+        /// Chiamato ogni volta che viene inviato un messaggio utente o ricevuto un messaggio assistant.
+        /// Il numero di sequenza viene calcolato automaticamente come MAX(sequence) + 1 per la conversazione.
+        /// </summary>
+        /// <param name="conversationId">ID della sessione di conversazione</param>
+        /// <param name="role">Ruolo del mittente: "user" o "assistant"</param>
+        /// <param name="content">Contenuto del messaggio (può includere markdown)</param>
+        public async Task SaveMessageAsync(string conversationId, string role, string content)
+        {
+            // Prima ottieni il prossimo numero di sequenza per questa conversazione
+            const string getSequenceSql = @"
+                SELECT COALESCE(MAX(sequence), 0) + 1 AS next_sequence
+                FROM messages
+                WHERE conversation_id = @ConversationId";
+
+            const string insertSql = @"
+                INSERT INTO messages (conversation_id, role, content, timestamp, sequence)
+                VALUES (@ConversationId, @Role, @Content, @Timestamp, @Sequence)";
+
+            try
+            {
+                using var connection = new MySqlConnection(_connectionString);
+                await connection.OpenAsync();
+
+                // Ottieni il prossimo numero di sequenza
+                int nextSequence;
+                using (var getSeqCommand = new MySqlCommand(getSequenceSql, connection))
+                {
+                    getSeqCommand.Parameters.AddWithValue("@ConversationId", conversationId);
+                    var result = await getSeqCommand.ExecuteScalarAsync();
+                    nextSequence = Convert.ToInt32(result);
+                }
+
+                // Inserisci il messaggio con il numero di sequenza calcolato
+                using (var insertCommand = new MySqlCommand(insertSql, connection))
+                {
+                    insertCommand.Parameters.AddWithValue("@ConversationId", conversationId);
+                    insertCommand.Parameters.AddWithValue("@Role", role);
+                    insertCommand.Parameters.AddWithValue("@Content", content);
+                    insertCommand.Parameters.AddWithValue("@Timestamp", DateTime.UtcNow);
+                    insertCommand.Parameters.AddWithValue("@Sequence", nextSequence);
+
+                    await insertCommand.ExecuteNonQueryAsync();
+
+                    Log.Debug("Saved message for session {SessionId}: role={Role}, sequence={Sequence}, length={Length}",
+                             conversationId, role, nextSequence, content.Length);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to save message for session: {SessionId}", conversationId);
+                // Non fare throw - il salvataggio dei messaggi è opzionale e non deve bloccare l'app
+            }
+        }
+
+        /// <summary>
+        /// Recupera gli ultimi N messaggi di una conversazione in ordine cronologico.
+        /// Usato per visualizzare la storia quando si riprende una sessione.
+        /// </summary>
+        /// <param name="conversationId">ID della sessione di conversazione</param>
+        /// <param name="count">Numero massimo di messaggi da recuperare (default 10)</param>
+        /// <returns>Lista di messaggi ordinati cronologicamente (dal più vecchio al più recente)</returns>
+        public async Task<List<ConversationMessage>> GetLastMessagesAsync(string conversationId, int count = 10)
+        {
+            if (count <= 0)
+            {
+                Log.Debug("GetLastMessagesAsync called with count={Count}, returning empty list", count);
+                return new List<ConversationMessage>();
+            }
+
+            // Usa una subquery per prendere gli ultimi N messaggi in ordine decrescente,
+            // poi riordina il risultato in ordine crescente per visualizzazione cronologica
+            const string sql = @"
+                SELECT id, conversation_id, role, content, timestamp, sequence
+                FROM (
+                    SELECT id, conversation_id, role, content, timestamp, sequence
+                    FROM messages
+                    WHERE conversation_id = @ConversationId
+                    ORDER BY sequence DESC
+                    LIMIT @Count
+                ) AS last_messages
+                ORDER BY sequence ASC";
+
+            var messages = new List<ConversationMessage>();
+
+            try
+            {
+                using var connection = new MySqlConnection(_connectionString);
+                await connection.OpenAsync();
+
+                using var command = new MySqlCommand(sql, connection);
+                command.Parameters.AddWithValue("@ConversationId", conversationId);
+                command.Parameters.AddWithValue("@Count", count);
+
+                using var reader = await command.ExecuteReaderAsync();
+
+                while (await reader.ReadAsync())
+                {
+                    var message = new ConversationMessage
+                    {
+                        Id = reader.GetInt32(reader.GetOrdinal("id")),
+                        ConversationId = reader.GetString(reader.GetOrdinal("conversation_id")),
+                        Role = reader.GetString(reader.GetOrdinal("role")),
+                        Content = reader.GetString(reader.GetOrdinal("content")),
+                        Timestamp = reader.GetDateTime(reader.GetOrdinal("timestamp")),
+                        Sequence = reader.GetInt32(reader.GetOrdinal("sequence"))
+                    };
+                    messages.Add(message);
+                }
+
+                Log.Information("Retrieved {Count} historical messages for session: {SessionId}", messages.Count, conversationId);
+                return messages;
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to retrieve messages for session: {SessionId}", conversationId);
+                return new List<ConversationMessage>(); // Ritorna lista vuota in caso di errore
             }
         }
     }
