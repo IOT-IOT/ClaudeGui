@@ -560,18 +560,18 @@ namespace ClaudeCodeMAUI.Views
         }
 
         /// <summary>
-        /// Verifica se il messaggio JSON raw contiene un campo session_id valido.
+        /// Verifica se il messaggio JSON raw contiene un campo sessionId valido.
         /// </summary>
         /// <param name="message">Messaggio da verificare</param>
-        /// <returns>True se il JSON ha un campo session_id non vuoto</returns>
+        /// <returns>True se il JSON ha un campo sessionId non vuoto</returns>
         private bool HasSessionIdInJson(UnifiedMessage message)
         {
             try
             {
                 var rawMessage = message.RawMessage;
 
-                // Cerca il campo "session_id" nel JSON root
-                if (rawMessage.TryGetProperty("session_id", out var sessionIdElement))
+                // Cerca il campo "sessionId" nel JSON root (camelCase)
+                if (rawMessage.TryGetProperty("sessionId", out var sessionIdElement))
                 {
                     var sessionId = sessionIdElement.GetString();
                     return !string.IsNullOrWhiteSpace(sessionId);
@@ -581,7 +581,7 @@ namespace ClaudeCodeMAUI.Views
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "Failed to check session_id in JSON");
+                Log.Error(ex, "Failed to check sessionId in JSON");
                 return false;
             }
         }
