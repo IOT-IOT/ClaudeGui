@@ -139,6 +139,18 @@ public class SettingsService
     /// <param name="y">Coordinata Y (distanza dal bordo superiore dello schermo)</param>
     public void SaveWindowPosition(double x, double y)
     {
+        
+        //if (x < 0)
+        //{
+        //    x = 0;
+
+        //}
+
+        //if (y < 0)
+        //{
+        //    y = 0;
+
+        //}
         Preferences.Set(KEY_WINDOW_X, x);
         Preferences.Set(KEY_WINDOW_Y, y);
         Log.Debug("SettingsService: Posizione finestra salvata - X={X}, Y={Y}", x, y);

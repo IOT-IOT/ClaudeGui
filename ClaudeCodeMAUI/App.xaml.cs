@@ -63,8 +63,8 @@ public partial class App : Application
 			var size = _settingsService.GetWindowSize();
 			if (size.HasValue)
 			{
-				_mainWindow.Width = size.Value.Width;
-				_mainWindow.Height = size.Value.Height;
+				_mainWindow.Width = Math.Max(size.Value.Width, 200);
+				_mainWindow.Height = Math.Max(size.Value.Height, 200);
 				Log.Information("App: Dimensioni finestra ripristinate - Width={Width}, Height={Height}", size.Value.Width, size.Value.Height);
 			}
 			else
@@ -106,13 +106,17 @@ public partial class App : Application
 
 	/// <summary>
 	/// Salva la posizione corrente della finestra nelle impostazioni.
+	/// Non salva se la finestra è minimizzata (valori X/Y < -1000).
 	/// </summary>
 	private void SaveWindowPosition()
 	{
-		if (_mainWindow == null) return;
+        // Non salvare se la finestra è minimizzata (coordinate negative anomale)
+        if (_mainWindow == null ||_mainWindow.X < -10000 || _mainWindow.Y < -10000) return;
 
 		try
 		{
+			
+
 			_settingsService.SaveWindowPosition(_mainWindow.X, _mainWindow.Y);
 		}
 		catch (Exception ex)
@@ -126,7 +130,8 @@ public partial class App : Application
 	/// </summary>
 	private void SaveWindowSize()
 	{
-		if (_mainWindow == null) return;
+        // Non salvare se la finestra è minimizzata (coordinate negative anomale)
+        if (_mainWindow == null ||_mainWindow.X < -10000 || _mainWindow.Y < -10000) return;
 
 		try
 		{
@@ -152,24 +157,28 @@ public partial class App : Application
 		SaveWindowPosition();
 		SaveWindowSize();
 
-		// Marca la sessione corrente come closed se presente
-		if (_dbService != null && !string.IsNullOrEmpty(_currentSessionId))
-		{
-			try
-			{
-				Log.Information("App: Marking session {SessionId} as closed", _currentSessionId);
-				// Operazione sincrona perché OnSleep deve completare velocemente
-				_dbService.UpdateStatusAsync(_currentSessionId, "closed").Wait(TimeSpan.FromSeconds(2));
-				Log.Information("App: Session {SessionId} marked as closed successfully", _currentSessionId);
-			}
-			catch (Exception ex)
-			{
-				Log.Error(ex, "App: Failed to mark session as closed");
-			}
-		}
-		else
-		{
-			Log.Information("App: No active session to close");
-		}
+
+
+
+		//Commentato perchè una sessione può essere chiusa solo dall'utente
+		//// Marca la sessione corrente come closed se presente
+		//if (_dbService != null && !string.IsNullOrEmpty(_currentSessionId))
+		//{
+		//	try
+		//	{
+		//		Log.Information("App: Marking session {SessionId} as closed", _currentSessionId);
+		//		// Operazione sincrona perché OnSleep deve completare velocemente
+		//		_dbService.UpdateStatusAsync(_currentSessionId, "closed").Wait(TimeSpan.FromSeconds(2));
+		//		Log.Information("App: Session {SessionId} marked as closed successfully", _currentSessionId);
+		//	}
+		//	catch (Exception ex)
+		//	{
+		//		Log.Error(ex, "App: Failed to mark session as closed");
+		//	}
+		//}
+		//else
+		//{
+		//	Log.Information("App: No active session to close");
+		//}
 	}
 }

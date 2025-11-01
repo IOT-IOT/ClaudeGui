@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="ClaudeCodeMAUI.Views.SessionViewer"
+             Title="Session JSON Viewer">
+
+    <Grid RowDefinitions="Auto,*,Auto" Padding="10">
+
+        <!-- HEADER: Session ID, pulsanti filtro e pulsante Close -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,Auto,Auto" Padding="0,0,0,10" ColumnSpacing="10">
+            <Label x:Name="SessionIdLabel"
+                   Grid.Column="0"
+                   Text="Session: ..."
+                   FontSize="16"
+                   FontAttributes="Bold"
+                   VerticalOptions="Center" />
+
+            <Button x:Name="BtnFilterMain"
+                    Grid.Column="1"
+                    Text="📘 Main Only"
+                    Clicked="OnFilterMainClicked"
+                    BackgroundColor="#0078D4"
+                    TextColor="White"
+                    CornerRadius="5"
+                    Padding="10,5"
+                    WidthRequest="140" />
+
+            <Button x:Name="BtnFilterTools"
+                    Grid.Column="2"
+                    Text="🔧 Hide Tools"
+                    Clicked="OnFilterToolsClicked"
+                    BackgroundColor="#0078D4"
+                    TextColor="White"
+                    CornerRadius="5"
+                    Padding="10,5"
+                    WidthRequest="140" />
+
+            <Button x:Name="BtnFilterSessionId"
+                    Grid.Column="3"
+                    Text="🆔 All IDs"
+                    Clicked="OnFilterSessionIdClicked"
+                    BackgroundColor="#0078D4"
+                    TextColor="White"
+                    CornerRadius="5"
+                    Padding="10,5"
+                    WidthRequest="140" />
+
+            <Button x:Name="BtnClose"
+                    Grid.Column="4"
+                    Text="✕ Close"
+                    Clicked="OnCloseClicked"
+                    BackgroundColor="DarkRed"
+                    TextColor="White"
+                    WidthRequest="100" />
+        </Grid>
+
+        <!-- MAIN CONTENT: Due pannelli affiancati -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,*" ColumnSpacing="10">
+
+            <!-- PANNELLO SINISTRO: JSON Raw -->
+            <Border Grid.Column="0"
+                    Stroke="Gray"
+                    StrokeThickness="1"
+                    BackgroundColor="#1E1E1E">
+                <Grid RowDefinitions="Auto,*">
+                    <!-- Titolo pannello -->
+                    <Label Grid.Row="0"
+                           Text="📄 Raw JSON"
+                           FontSize="14"
+                           FontAttributes="Bold"
+                           Padding="10,5"
+                           BackgroundColor="#2D2D30"
+                           TextColor="White" />
+
+                    <!-- Editor JSON -->
+                    <ScrollView Grid.Row="1">
+                        <Editor x:Name="JsonEditor"
+                                IsReadOnly="True"
+                                FontFamily="Consolas"
+                                FontSize="12"
+                                TextColor="#D4D4D4"
+                                BackgroundColor="#1E1E1E"
+                                Margin="5" />
+                    </ScrollView>
+                </Grid>
+            </Border>
+
+            <!-- PANNELLO DESTRO: Messaggio Renderizzato -->
+            <Border Grid.Column="1"
+                    Stroke="Gray"
+                    StrokeThickness="1"
+                    BackgroundColor="White">
+                <Grid RowDefinitions="Auto,*">
+                    <!-- Titolo pannello -->
+                    <Label Grid.Row="0"
+                           Text="💬 Message Content (Rendered)"
+                           FontSize="14"
+                           FontAttributes="Bold"
+                           Padding="10,5"
+                           BackgroundColor="#2D2D30"
+                           TextColor="White" />
+
+                    <!-- WebView per renderizzare Markdown come HTML -->
+                    <ScrollView Grid.Row="1">
+                        <WebView x:Name="MessageWebView"
+                                 HeightRequest="600"
+                                 Margin="5" />
+                    </ScrollView>
+                </Grid>
+            </Border>
+
+        </Grid>
+
+        <!-- FOOTER: Controlli di navigazione -->
+        <Grid Grid.Row="2"
+              ColumnDefinitions="Auto,Auto,*,Auto,Auto"
+              ColumnSpacing="10"
+              Padding="0,10,0,0">
+
+            <Button x:Name="BtnFirst"
+                    Grid.Column="0"
+                    Text="⏮ First"
+                    Clicked="OnFirstClicked"
+                    WidthRequest="100"
+                    BackgroundColor="#0078D4"
+                    TextColor="White" />
+
+            <Button x:Name="BtnPrevious"
+                    Grid.Column="1"
+                    Text="← Previous"
+                    Clicked="OnPreviousClicked"
+                    WidthRequest="120"
+                    BackgroundColor="#0078D4"
+                    TextColor="White" />
+
+            <Label x:Name="CounterLabel"
+                   Grid.Column="2"
+                   Text="Message 0 / 0"
+                   FontSize="16"
+                   FontAttributes="Bold"
+                   HorizontalOptions="Center"
+                   VerticalOptions="Center" />
+
+            <Button x:Name="BtnNext"
+                    Grid.Column="3"
+                    Text="Next →"
+                    Clicked="OnNextClicked"
+                    WidthRequest="120"
+                    BackgroundColor="#0078D4"
+                    TextColor="White" />
+
+            <Button x:Name="BtnLast"
+                    Grid.Column="4"
+                    Text="Last ⏭"
+                    Clicked="OnLastClicked"
+                    WidthRequest="100"
+                    BackgroundColor="#0078D4"
+                    TextColor="White" />
+        </Grid>
+
+    </Grid>
+
+</ContentPage>

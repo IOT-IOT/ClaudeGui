@@ -35,7 +35,7 @@
                        TextColor="Gray" />
             </HorizontalStackLayout>
 
-            <!-- Pulsanti sulla destra (Context Info, Terminal e Settings) -->
+            <!-- Pulsanti sulla destra (Context Info, View Session, Terminal e Settings) -->
             <HorizontalStackLayout Grid.Column="1"
                                    Spacing="10"
                                    VerticalOptions="Center"
@@ -51,6 +51,19 @@
                         TextColor="White"
                         ToolTipProperties.Text="Show Context Information"
                         Clicked="OnContextInfoClicked"
+                        VerticalOptions="Center" />
+
+                <!-- Pulsante View Session (mostra TUTTE le sessioni unificate) -->
+                <Button x:Name="BtnViewSession"
+                        Text="📄"
+                        FontSize="20"
+                        WidthRequest="45"
+                        HeightRequest="45"
+                        CornerRadius="22"
+                        BackgroundColor="#4A4A4A"
+                        TextColor="White"
+                        ToolTipProperties.Text="View All Sessions (Unified Timeline)"
+                        Clicked="OnViewSessionClicked"
                         VerticalOptions="Center" />
 
                 <!-- Pulsante Terminal -->

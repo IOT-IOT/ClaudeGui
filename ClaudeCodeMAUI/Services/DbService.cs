@@ -78,8 +78,8 @@ namespace ClaudeCodeMAUI.Services
         public async Task InsertSessionAsync(ConversationSession session)
         {
             const string sql = @"
-                INSERT INTO conversations (session_id, tab_title, last_activity, status)
-                VALUES (@SessionId, @TabTitle,  @LastActivity, @Status)";
+                INSERT INTO conversations (session_id, tab_title, last_activity, status, working_directory)
+                VALUES (@SessionId, @TabTitle,  @LastActivity, @Status, @WorkingDirectory)";
 
             try
             {
@@ -91,10 +91,12 @@ namespace ClaudeCodeMAUI.Services
                 command.Parameters.AddWithValue("@TabTitle", session.TabTitle);
                 command.Parameters.AddWithValue("@LastActivity", session.LastActivity);
                 command.Parameters.AddWithValue("@Status", session.Status);
+                command.Parameters.AddWithValue("@WorkingDirectory", session.WorkingDirectory);
 
                 await command.ExecuteNonQueryAsync();
 
-                Log.Information("Inserted new session: {SessionId} - {TabTitle}", session.SessionId, session.TabTitle);
+                Log.Information("Inserted new session: {SessionId} - {TabTitle} - WorkingDir: {WorkingDir}",
+                    session.SessionId, session.TabTitle, session.WorkingDirectory);
             }
             catch (Exception ex)
             {
@@ -172,13 +174,52 @@ namespace ClaudeCodeMAUI.Services
         }
 
         /// <summary>
+        /// Updates the working directory of a conversation session.
+        /// Used if user wants to change the working directory during a session.
+        /// </summary>
+        public async Task UpdateWorkingDirectoryAsync(string sessionId, string workingDirectory)
+        {
+            const string sql = @"
+                UPDATE conversations
+                SET working_directory = @WorkingDirectory, updated_at = NOW()
+                WHERE session_id = @SessionId";
+
+            try
+            {
+                using var connection = new MySqlConnection(_connectionString);
+                await connection.OpenAsync();
+
+                using var command = new MySqlCommand(sql, connection);
+                command.Parameters.AddWithValue("@WorkingDirectory", workingDirectory);
+                command.Parameters.AddWithValue("@SessionId", sessionId);
+
+                var rowsAffected = await command.ExecuteNonQueryAsync();
+
+                if (rowsAffected > 0)
+                {
+                    Log.Information("Updated working directory for session {SessionId} to: {WorkingDir}",
+                                    sessionId, workingDirectory);
+                }
+                else
+                {
+                    Log.Warning("No session found with id: {SessionId}", sessionId);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to update working directory for session: {SessionId}", sessionId);
+                // Don't throw - fire-and-forget
+            }
+        }
+
+        /// <summary>
         /// Retrieves all active or killed conversation sessions for recovery.
         /// Called at app startup to recover sessions after crash/close.
         /// </summary>
         public async Task<List<ConversationSession>> GetActiveConversationsAsync()
         {
             const string sql = @"
-                SELECT id, session_id, tab_title, last_activity, status, created_at, updated_at
+                SELECT id, session_id, tab_title, last_activity, status, created_at, updated_at, working_directory
                 FROM conversations
                 WHERE status IN ('active', 'killed')
                 ORDER BY last_activity DESC";
@@ -196,6 +237,7 @@ namespace ClaudeCodeMAUI.Services
                 while (await reader.ReadAsync())
                 {
                     var tabTitleOrdinal = reader.GetOrdinal("tab_title");
+                    var workingDirOrdinal = reader.GetOrdinal("working_directory");
 
                     var session = new ConversationSession
                     {
@@ -207,7 +249,10 @@ namespace ClaudeCodeMAUI.Services
                         LastActivity = reader.GetDateTime(reader.GetOrdinal("last_activity")),
                         Status = reader.GetString(reader.GetOrdinal("status")),
                         CreatedAt = reader.GetDateTime(reader.GetOrdinal("created_at")),
-                        UpdatedAt = reader.GetDateTime(reader.GetOrdinal("updated_at"))
+                        UpdatedAt = reader.GetDateTime(reader.GetOrdinal("updated_at")),
+                        WorkingDirectory = reader.IsDBNull(workingDirOrdinal)
+                            ? @"C:\Sources\ClaudeGui"
+                            : reader.GetString(workingDirOrdinal)
                     };
                     sessions.Add(session);
                 }

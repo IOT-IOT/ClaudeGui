@@ -37,6 +37,7 @@ namespace ClaudeCodeMAUI.Services
         private readonly string? _sessionId;
         //private readonly bool _isPlanMode;
         private readonly string? _dbSessionId; // For DB updates
+        private readonly string _workingDirectory; // Working directory per il processo Claude
 
         // Events
         public event EventHandler<JsonLineReceivedEventArgs>? JsonLineReceived;
@@ -48,13 +49,17 @@ namespace ClaudeCodeMAUI.Services
         /// </summary>
         /// <param name="resumeSessionId">Optional session ID to resume</param>
         /// <param name="dbSessionId">Session ID for DB operations (for fire-and-forget updates)</param>
-        public ClaudeProcessManager(string? resumeSessionId = null, string? dbSessionId = null)
+        /// <param name="workingDirectory">Optional working directory for Claude process. If null, uses AppConfig default.</param>
+        public ClaudeProcessManager(string? resumeSessionId = null, string? dbSessionId = null, string? workingDirectory = null)
         {
-            
+
             _sessionId = resumeSessionId;
             _dbSessionId = dbSessionId;
+            _workingDirectory = workingDirectory ?? AppConfig.ClaudeWorkingDirectory;
             _isRunning = false;
             _wasKilled = false;
+
+            Log.Information("ClaudeProcessManager created with working directory: {WorkingDir}", _workingDirectory);
         }
 
         /// <summary>
@@ -82,7 +87,7 @@ namespace ClaudeCodeMAUI.Services
                     CreateNoWindow = true,
                     StandardOutputEncoding = Encoding.UTF8,
                     StandardErrorEncoding = Encoding.UTF8,
-                    WorkingDirectory = AppConfig.ClaudeWorkingDirectory
+                    WorkingDirectory = _workingDirectory
                 };
                 Log.Information("ProcessStartInfo created with Arguments: {Args}, WorkingDirectory: {WorkingDir}",
                     startInfo.Arguments, startInfo.WorkingDirectory);

@@ -1,10 +1,15 @@
 using ClaudeCodeMAUI.Services;
 using ClaudeCodeMAUI.Models;
 using ClaudeCodeMAUI.Utilities;
+using Microsoft.Extensions.Configuration;
 using Serilog;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Diagnostics;
+
+#if WINDOWS
+using Microsoft.Maui.Platform;
+#endif
 
 namespace ClaudeCodeMAUI;
 
@@ -12,6 +17,7 @@ public partial class MainPage : ContentPage
 {
     private readonly DbService? _dbService;
     private readonly SettingsService? _settingsService;
+    private readonly IConfiguration _configuration;
     private ClaudeProcessManager? _processManager;
     private StreamJsonParser? _parser;
     private ConversationSession? _currentSession;
@@ -21,15 +27,17 @@ public partial class MainPage : ContentPage
     private bool _isDarkTheme = true;  // Default tema scuro
     private bool _isWebViewReady = false;
     private bool _sessionInitialized = false;  // Flag per mostrare messaggio init solo prima volta
+    private string? _currentWorkingDirectory;  // Working directory selezionata per la conversazione corrente
 
     // ===== NUOVO APPROCCIO: "Reload Full Page" =====
     // Buffer per memorizzare tutto l'HTML della conversazione
     // Ogni nuovo messaggio viene aggiunto al buffer e l'intera pagina HTML viene rigenerata
     private System.Text.StringBuilder _conversationHtml = new System.Text.StringBuilder();
 
-    public MainPage()
+    public MainPage(IConfiguration configuration)
     {
         InitializeComponent();
+        _configuration = configuration;
         _settingsService = new SettingsService();
         Log.Information("MainPage initialized");
     }
@@ -56,7 +64,7 @@ public partial class MainPage : ContentPage
         }
     }
 
-    public MainPage(DbService dbService) : this()
+    public MainPage(IConfiguration configuration, DbService dbService) : this(configuration)
     {
         _dbService = dbService;
         Log.Information("MainPage initialized with DbService");
@@ -126,9 +134,53 @@ public partial class MainPage : ContentPage
     }
 #endif
 
-    private void OnNewConversationClicked(object? sender, EventArgs e)
+    /// <summary>
+    /// Handler per il click sul pulsante "New Conversation".
+    /// Richiede la selezione obbligatoria della working directory prima di iniziare.
+    /// </summary>
+    private async void OnNewConversationClicked(object? sender, EventArgs e)
     {
-        StartNewConversation();
+        try
+        {
+            Log.Information("New conversation button clicked");
+
+            // Mostra il picker per la selezione della working directory
+            var selectedDirectory = await PickWorkingDirectoryAsync();
+
+            // Se l'utente cancella la selezione, non avviare la conversazione
+            if (string.IsNullOrWhiteSpace(selectedDirectory))
+            {
+                Log.Information("Conversation start cancelled: no working directory selected");
+                await DisplayAlert("Working Directory Required",
+                    "You must select a working directory to start a new conversation.",
+                    "OK");
+                return;
+            }
+
+            // Salva la directory selezionata
+            _currentWorkingDirectory = selectedDirectory;
+            Log.Information("Working directory set to: {Directory}", _currentWorkingDirectory);
+
+            // Mostra una conferma all'utente
+            var confirm = await DisplayAlert("Confirm Working Directory",
+                $"Start new conversation in:\n\n{_currentWorkingDirectory}",
+                "Start", "Cancel");
+
+            if (!confirm)
+            {
+                Log.Information("Conversation start cancelled by user after directory confirmation");
+                _currentWorkingDirectory = null;  // Reset
+                return;
+            }
+
+            // Avvia la nuova conversazione con la directory selezionata
+            StartNewConversation();
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to handle new conversation click");
+            await DisplayAlert("Error", $"Failed to start new conversation: {ex.Message}", "OK");
+        }
     }
 
     private void OnStopClicked(object? sender, EventArgs e)
@@ -220,6 +272,43 @@ public partial class MainPage : ContentPage
             await ShowCopyableErrorAsync("Unexpected Error", $"Unexpected error: {ex.Message}\n\nStack Trace:\n{ex.StackTrace}");
         }
     }
+
+    /// <summary>
+    /// Handler per il click sul pulsante View Session.
+    /// Apre il viewer unificato con TUTTE le sessioni della working directory.
+    /// Le sessioni sono ordinate per timestamp con timeline gerarchica (agent dopo tool_use).
+    /// </summary>
+    private async void OnViewSessionClicked(object? sender, EventArgs e)
+    {
+        try
+        {
+            Log.Information("View Session button clicked");
+
+            // Determina la working directory da usare
+            var workingDir = _currentSession?.WorkingDirectory ?? _currentWorkingDirectory;
+
+            if (string.IsNullOrWhiteSpace(workingDir))
+            {
+                Log.Warning("No working directory set");
+                await DisplayAlert("No Working Directory",
+                    "No working directory is set. Start a conversation first or select a working directory.",
+                    "OK");
+                return;
+            }
+
+            Log.Information("Opening unified session viewer for all sessions in working directory: {WorkingDir}", workingDir);
+
+            // Apri il viewer semplificato in modale (mostra TUTTE le sessioni)
+            var viewer = new ClaudeCodeMAUI.Views.SessionViewer(workingDir);
+            await Navigation.PushModalAsync(new NavigationPage(viewer));
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to open session viewer");
+            await DisplayAlert("Error", $"Failed to open session viewer:\n\n{ex.Message}", "OK");
+        }
+    }
+
 
     /// <summary>
     /// Handler per il click sul pulsante Terminal.
@@ -377,18 +466,32 @@ public partial class MainPage : ContentPage
 
     /// <summary>
     /// Aggiorna la barra superiore con la directory di lavoro corrente.
+    /// Mostra la working directory effettivamente usata dal processo Claude.
+    /// </summary>
+    /// <summary>
+    /// Aggiorna la label della working directory nell'UI con il valore della sessione corrente.
     /// </summary>
     private void UpdateWorkingDirectory()
     {
         try
         {
-            var currentDir = Directory.GetCurrentDirectory();
-            WorkingDirectoryLabel.Text = $"Working Directory: {currentDir}";
-            Log.Information("Working directory updated: {Directory}", currentDir);
+            // Usa la working directory della sessione corrente (se presente)
+            var workingDir = _currentSession?.WorkingDirectory ?? _currentWorkingDirectory;
+
+            if (!string.IsNullOrWhiteSpace(workingDir))
+            {
+                WorkingDirectoryLabel.Text = $"Working Directory: {workingDir}";
+                Log.Information("Working directory displayed: {Directory}", workingDir);
+            }
+            else
+            {
+                WorkingDirectoryLabel.Text = "Working Directory: <not set>";
+                Log.Warning("Working directory not set for current session");
+            }
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Failed to get current directory");
+            Log.Error(ex, "Failed to get working directory");
             WorkingDirectoryLabel.Text = "Working Directory: <error>";
         }
     }
@@ -543,12 +646,22 @@ public partial class MainPage : ContentPage
             // Reset flag sessione inizializzata
             _sessionInitialized = false;
 
-            // 1. Imposta sessione corrente
+            // 1. Imposta sessione corrente e carica la working directory
             _currentSession = session;
-            Log.Information("Session set as current. Plan mode: {IsPlanMode}", _isPlanMode);
+            _currentWorkingDirectory = session.WorkingDirectory;
+            Log.Information("Session set as current. Working directory: {WorkingDir}, Plan mode: {IsPlanMode}",
+                            _currentWorkingDirectory, _isPlanMode);
 
-            // Aggiorna il Context ID nella barra superiore
+            // Verifica che la working directory sia valida
+            if (string.IsNullOrWhiteSpace(_currentWorkingDirectory))
+            {
+                Log.Warning("Session has no working directory set, using default");
+                _currentWorkingDirectory = @"C:\Sources\ClaudeGui";  // Fallback
+            }
+
+            // Aggiorna il Context ID e la working directory nella barra superiore
             UpdateContextId(session.SessionId);
+            UpdateWorkingDirectory();
 
             // 2. Crea parser
             _parser = new StreamJsonParser();
@@ -559,15 +672,17 @@ public partial class MainPage : ContentPage
             _parser.MetadataReceived += OnMetadataReceived;
             Log.Information("Parser created and events wired");
 
-            // 3. Crea process manager CON resumeSessionId (QUESTO È IL FIX PRINCIPALE!)
+            // 3. Crea process manager CON resumeSessionId e working directory
             _processManager = new ClaudeProcessManager(
-                session.SessionId,  // <<<< Passa il session_id per --resume
-                session.SessionId
+                session.SessionId,      // Passa il session_id per --resume
+                session.SessionId,
+                _currentWorkingDirectory  // Passa la working directory della sessione
             );
             _processManager.JsonLineReceived += OnJsonLineReceived;
             _processManager.ErrorReceived += OnErrorReceived;
             _processManager.ProcessCompleted += OnProcessCompleted;
-            Log.Information("Process manager created with session_id for --resume");
+            Log.Information("Process manager created with session_id for --resume in {WorkingDir}",
+                            _currentWorkingDirectory);
 
             // 4. Avvia processo con --resume
             _processManager.Start();
@@ -700,16 +815,25 @@ public partial class MainPage : ContentPage
         {
             Log.Information("StartNewConversation called");
 
+            // Verifica che la working directory sia stata selezionata
+            if (string.IsNullOrWhiteSpace(_currentWorkingDirectory))
+            {
+                Log.Error("Cannot start conversation: no working directory selected");
+                await DisplayAlert("Error", "Working directory not set. This should not happen.", "OK");
+                return;
+            }
+
             // Reset flag sessione inizializzata
             _sessionInitialized = false;
 
-            // Crea nuova sessione
+            // Crea nuova sessione con la working directory selezionata
             _currentSession = new ConversationSession
             {
                 Status = "active",
-                TabTitle = "New Conversation"
+                TabTitle = "New Conversation",
+                WorkingDirectory = _currentWorkingDirectory
             };
-            Log.Information("Session created");
+            Log.Information("Session created with working directory: {WorkingDir}", _currentWorkingDirectory);
 
             // Crea parser
             _parser = new StreamJsonParser();
@@ -720,12 +844,12 @@ public partial class MainPage : ContentPage
             _parser.MetadataReceived += OnMetadataReceived;
             Log.Information("Parser created");
 
-            // Crea process manager
-            _processManager = new ClaudeProcessManager(null, null);
+            // Crea process manager con la working directory specificata
+            _processManager = new ClaudeProcessManager(null, null, _currentWorkingDirectory);
             _processManager.JsonLineReceived += OnJsonLineReceived;
             _processManager.ErrorReceived += OnErrorReceived;
             _processManager.ProcessCompleted += OnProcessCompleted;
-            Log.Information("Process manager created");
+            Log.Information("Process manager created with working directory: {WorkingDir}", _currentWorkingDirectory);
 
             // Avvia processo
             Log.Information("Starting Claude process...");
@@ -737,7 +861,7 @@ public partial class MainPage : ContentPage
             LblStatus.Text = "Running...";
             LblStatus.TextColor = Colors.Green;
 
-            // Aggiorna la working directory quando si inizia una nuova conversazione
+            // Aggiorna la working directory label con la directory corrente
             UpdateWorkingDirectory();
 
             // Pulisci WebView
@@ -769,6 +893,59 @@ public partial class MainPage : ContentPage
         {
             Log.Error(ex, "Failed to stop conversation");
             DisplayAlert("Error", $"Failed to stop conversation: {ex.Message}", "OK");
+        }
+    }
+
+    /// <summary>
+    /// Mostra un dialog per la selezione della working directory.
+    /// Questo metodo usa l'API nativa di Windows (FolderPicker).
+    /// Restituisce null se l'utente cancella la selezione.
+    /// </summary>
+    /// <returns>Percorso della directory selezionata, o null se cancellato</returns>
+    private async Task<string?> PickWorkingDirectoryAsync()
+    {
+        try
+        {
+#if WINDOWS
+            // Usa l'API nativa di Windows per il FolderPicker
+            var folderPicker = new Windows.Storage.Pickers.FolderPicker();
+
+            // Ottieni l'handle della finestra principale
+            var windowHandle = ((MauiWinUIWindow)Application.Current!.Windows[0].Handler.PlatformView!).WindowHandle;
+
+            // Inizializza il picker con l'handle della finestra
+            WinRT.Interop.InitializeWithWindow.Initialize(folderPicker, windowHandle);
+
+            // Configura il picker
+            folderPicker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.ComputerFolder;
+            folderPicker.FileTypeFilter.Add("*");  // Obbligatorio per FolderPicker
+
+            // Mostra il dialog e attendi la selezione
+            var folder = await folderPicker.PickSingleFolderAsync();
+
+            if (folder != null)
+            {
+                Log.Information("Working directory selected: {Path}", folder.Path);
+                return folder.Path;
+            }
+            else
+            {
+                Log.Information("Working directory selection cancelled by user");
+                return null;
+            }
+#else
+            // Su altre piattaforme, usa un dialog MAUI standard
+            // TODO: implementare per Android/iOS/Mac se necessario
+            await DisplayAlert("Not Supported", "Working directory selection is only supported on Windows", "OK");
+            Log.Warning("Working directory selection not supported on this platform");
+            return null;
+#endif
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to pick working directory");
+            await DisplayAlert("Error", $"Failed to select directory: {ex.Message}", "OK");
+            return null;
         }
     }
 
@@ -836,12 +1013,22 @@ public partial class MainPage : ContentPage
             // Inizializza il SessionTokenTracker per monitorare il contesto
             try
             {
-                var workingDir = Directory.GetCurrentDirectory();
-                _tokenTracker = new SessionTokenTracker(e.SessionId, workingDir);
-                Log.Information("SessionTokenTracker initialized for session: {SessionId}", e.SessionId);
+                // Usa la working directory della sessione corrente per trovare i file di sessione
+                var workingDir = _currentSession?.WorkingDirectory ?? _currentWorkingDirectory;
 
-                // Aggiorna subito il display (anche se probabilmente a 0 token inizialmente)
-                UpdateTokenBudgetDisplay();
+                if (string.IsNullOrWhiteSpace(workingDir))
+                {
+                    Log.Warning("Cannot initialize SessionTokenTracker: no working directory set");
+                }
+                else
+                {
+                    _tokenTracker = new SessionTokenTracker(e.SessionId, workingDir);
+                    Log.Information("SessionTokenTracker initialized for session: {SessionId} in {WorkingDir}",
+                                    e.SessionId, workingDir);
+
+                    // Aggiorna subito il display (anche se probabilmente a 0 token inizialmente)
+                    UpdateTokenBudgetDisplay();
+                }
             }
             catch (Exception ex)
             {

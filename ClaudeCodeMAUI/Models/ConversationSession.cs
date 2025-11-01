@@ -46,6 +46,12 @@ namespace ClaudeCodeMAUI.Models
         /// </summary>
         public DateTime UpdatedAt { get; set; } = DateTime.Now;
 
+        /// <summary>
+        /// Working directory utilizzata per il processo Claude di questa conversazione.
+        /// Salvata nel database e ripristinata al resume della sessione.
+        /// </summary>
+        public string WorkingDirectory { get; set; } = @"C:\Sources\ClaudeGui";
+
 
         // ===== Runtime Metadata (NOT in database) =====
 
