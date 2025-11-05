@@ -899,6 +899,10 @@ namespace ClaudeCodeMAUI.Services
                 // Campi usage
                 "input_tokens", "output_tokens",
                 "cache_creation_input_tokens", "cache_read_input_tokens",
+                "cache_creation", "service_tier",
+
+                // Campi cache_creation object (nested in usage)
+                "ephemeral_5m_input_tokens", "ephemeral_1h_input_tokens",
 
                 // Altri campi osservati
                 "summary", "metadata"
