@@ -1013,17 +1013,19 @@ namespace ClaudeCodeMAUI.Services
 
         /// <summary>
         /// Importa messaggi da file .jsonl nel database.
-        /// Rileva campi sconosciuti ma CONTINUA l'import, raccogliendo tutti gli unknown fields trovati.
+        /// Rileva campi sconosciuti e mostra dialog per decidere se continuare o interrompere.
         /// </summary>
         /// <param name="sessionId">ID della sessione</param>
         /// <param name="jsonlFilePath">Path del file .jsonl</param>
         /// <param name="progressCallback">Callback per aggiornare progress (current, total)</param>
+        /// <param name="unknownFieldsCallback">Callback per mostrare dialog unknown fields. Return true per continuare, false per interrompere.</param>
         /// <param name="cancellationToken">Token per annullare l'operazione</param>
         /// <returns>MessageImportResult con dettagli completi dell'import</returns>
         public async Task<Models.MessageImportResult> ImportMessagesFromJsonlAsync(
                 string sessionId,
                 string jsonlFilePath,
                 IProgress<(int current, int total)>? progressCallback = null,
+                Func<string, List<string>, Task<bool>>? unknownFieldsCallback = null,
                 CancellationToken cancellationToken = default)
         {
             var knownFields = GetKnownJsonFields();
@@ -1064,7 +1066,7 @@ namespace ClaudeCodeMAUI.Services
                     var json = System.Text.Json.JsonDocument.Parse(line);
                     var root = json.RootElement;
 
-                    // RILEVA CAMPI SCONOSCIUTI - MA CONTINUA!
+                    // RILEVA CAMPI SCONOSCIUTI - CHIEDE ALL'UTENTE COSA FARE
                     var unknownFields = DetectUnknownFields(root, knownFields);
                     if (unknownFields.Count > 0)
                     {
@@ -1074,6 +1076,17 @@ namespace ClaudeCodeMAUI.Services
 
                         Log.Warning("Unknown fields found in message {Uuid}: {Fields}",
                             messageUuid, string.Join(", ", unknownFields));
+
+                        // Chiama callback per mostrare dialog e decidere se continuare
+                        if (unknownFieldsCallback != null)
+                        {
+                            bool shouldContinue = await unknownFieldsCallback(messageUuid ?? "unknown", unknownFields);
+                            if (!shouldContinue)
+                            {
+                                Log.Information("Import interrupted by user at message {Uuid}", messageUuid);
+                                throw new OperationCanceledException("Import interrotto dall'utente");
+                            }
+                        }
 
                         progressCallback?.Report((lineNumber, totalLines));
                         continue; // SKIP questo messaggio ma CONTINUA con i successivi
@@ -1096,11 +1109,76 @@ namespace ClaudeCodeMAUI.Services
                         continue;
                     }
 
-                    // Estrai contenuto base per salvare
+                    // Estrai TUTTI i metadata completi (sia snake_case che camelCase)
+                    string? parentUuid = root.TryGetProperty("parent_uuid", out var pu1) ? pu1.GetString() :
+                                        root.TryGetProperty("parentUuid", out var pu2) ? pu2.GetString() : null;
+                    string? version = root.TryGetProperty("version", out var v) ? v.GetString() : null;
+                    string? gitBranch = root.TryGetProperty("git_branch", out var gb1) ? gb1.GetString() :
+                                       root.TryGetProperty("gitBranch", out var gb2) ? gb2.GetString() : null;
+                    bool? isSidechain = root.TryGetProperty("is_sidechain", out var isc1) ? isc1.GetBoolean() :
+                                       root.TryGetProperty("isSidechain", out var isc2) ? (bool?)isc2.GetBoolean() : null;
+                    string? userType = root.TryGetProperty("user_type", out var ut1) ? ut1.GetString() :
+                                      root.TryGetProperty("userType", out var ut2) ? ut2.GetString() : null;
+                    string? cwd = root.TryGetProperty("cwd", out var c) ? c.GetString() : null;
+
+                    string? requestId = null;
+                    string? model = null;
+                    string? usageJson = null;
+                    int? cache5mTokens = null;
+                    int? cache1hTokens = null;
+                    string? serviceTier = null;
+
+                    // Per messaggi assistant, estrai requestId, model e usage
+                    if (root.TryGetProperty("message", out var messageProp))
+                    {
+                        if (messageProp.TryGetProperty("id", out var idProp))
+                            requestId = idProp.GetString();
+
+                        if (messageProp.TryGetProperty("model", out var modelProp))
+                            model = modelProp.GetString();
+
+                        if (messageProp.TryGetProperty("usage", out var usageProp))
+                        {
+                            usageJson = usageProp.GetRawText();
+
+                            // Estrai campi cache Anthropic
+                            if (usageProp.TryGetProperty("cache_creation", out var cacheCreation))
+                            {
+                                if (cacheCreation.TryGetProperty("ephemeral_5m_input_tokens", out var cache5m))
+                                    cache5mTokens = cache5m.GetInt32();
+
+                                if (cacheCreation.TryGetProperty("ephemeral_1h_input_tokens", out var cache1h))
+                                    cache1hTokens = cache1h.GetInt32();
+                            }
+
+                            if (usageProp.TryGetProperty("service_tier", out var tierProp))
+                                serviceTier = tierProp.GetString();
+                        }
+                    }
+
+                    // Estrai contenuto
                     string content = ExtractBasicContent(root);
 
-                    // Salva nel DB (metodo semplificato per import batch)
-                    await SaveMessageAsync(sessionId, type ?? "unknown", content, timestamp, uuid);
+                    // Salva nel DB con TUTTI i metadata
+                    await SaveMessageAsync(
+                        sessionId,
+                        type ?? "unknown",
+                        content,
+                        timestamp,
+                        uuid,
+                        parentUuid,
+                        version,
+                        gitBranch,
+                        isSidechain,
+                        userType,
+                        cwd,
+                        requestId,
+                        model,
+                        usageJson,
+                        type, // messageType = type
+                        cache5mTokens,
+                        cache1hTokens,
+                        serviceTier);
 
                     result.ImportedCount++;
 

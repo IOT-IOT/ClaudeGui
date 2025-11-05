@@ -936,7 +936,7 @@ public partial class MainPage : ContentPage
 
             _lastProcessedTimestamp = timestamp;
 
-            // Rileva campi sconosciuti - LOG ma CONTINUA
+            // Rileva campi sconosciuti - MOSTRA DIALOG per decidere
             if (_dbService != null)
             {
                 var unknownFields = _dbService.DetectUnknownFields(root, _dbService.GetKnownJsonFields());
@@ -946,8 +946,27 @@ public partial class MainPage : ContentPage
                     Log.Warning("Unknown fields detected in live message {Uuid}: {Fields}",
                         uuid, string.Join(", ", unknownFields));
 
-                    // NON salvare messaggi con campi sconosciuti in tempo reale
-                    // Ma NON interrompere il processing - continua con i successivi
+                    // Mostra dialog per chiedere all'utente cosa fare
+                    var fieldsText = string.Join("\n- ", unknownFields);
+                    bool shouldContinue = await MainThread.InvokeOnMainThreadAsync(async () =>
+                    {
+                        return await DisplayAlert(
+                            "Campi Sconosciuti Rilevati",
+                            $"Il messaggio live con UUID:\n{uuid}\n\n" +
+                            $"contiene i seguenti campi sconosciuti:\n- {fieldsText}\n\n" +
+                            $"Cosa vuoi fare?",
+                            "Continua Scansione",
+                            "Interrompi Processing");
+                    });
+
+                    if (!shouldContinue)
+                    {
+                        Log.Information("Live message processing interrupted by user at message {Uuid}", uuid);
+                        // Ferma il FileWatcher o gestisci l'interruzione
+                        return;
+                    }
+
+                    // Se l'utente ha scelto "Continua", skip questo messaggio ma continua
                     return;
                 }
             }

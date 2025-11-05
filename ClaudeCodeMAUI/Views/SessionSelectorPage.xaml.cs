@@ -687,6 +687,22 @@ namespace ClaudeCodeMAUI.Views
                         );
                     });
 
+                    // Crea il callback per gestire unknown fields
+                    Func<string, List<string>, Task<bool>> unknownFieldsCallback = async (uuid, unknownFields) =>
+                    {
+                        // Mostra dialog per chiedere all'utente cosa fare
+                        var fieldsText = string.Join("\n- ", unknownFields);
+                        bool shouldContinue = await DisplayAlert(
+                            "Campi Sconosciuti Rilevati",
+                            $"Il messaggio con UUID:\n{uuid}\n\n" +
+                            $"contiene i seguenti campi sconosciuti:\n- {fieldsText}\n\n" +
+                            $"Cosa vuoi fare?",
+                            "Continua Scansione",
+                            "Interrompi Import");
+
+                        return shouldContinue;
+                    };
+
                     // Esegui l'import con progress e cancellation support
                     Models.MessageImportResult? result = null;
                     bool cancelled = false;
@@ -697,6 +713,7 @@ namespace ClaudeCodeMAUI.Views
                             selectedItem.SessionId,
                             filePath,
                             progress,
+                            unknownFieldsCallback,
                             progressDialog.CancellationToken);
 
                         // Segna come completato
