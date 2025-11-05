@@ -140,6 +140,12 @@ public partial class MainPage : ContentPage
             }
 
             Log.Information("Session restoration completed");
+
+            // TEST: Mostra dialog di test per DisplaySelectableAlert
+            await this.DisplaySelectableAlert(
+                "Test DisplaySelectableAlert",
+                "Questo è un messaggio di test.\n\nProva a selezionare questo testo con il mouse e copiarlo.\n\nSe riesci a selezionare e copiare il testo, DisplaySelectableAlert funziona correttamente! ✓\n\nRiga 1\nRiga 2\nRiga 3",
+                "OK");
         }
         catch (Exception ex)
         {
