@@ -431,5 +431,400 @@ namespace ClaudeCodeMAUI.Services
                 return new List<ConversationMessage>(); // Ritorna lista vuota in caso di errore
             }
         }
+
+        // ===== NUOVI METODI PER TABELLA SESSIONS (Multi-Sessione con Tab) =====
+
+        /// <summary>
+        /// Rappresenta un record dalla tabella Sessions
+        /// </summary>
+        public class SessionDbRow
+        {
+            public int Id { get; set; }
+            public string SessionId { get; set; } = string.Empty;
+            public string? Name { get; set; }
+            public string WorkingDirectory { get; set; } = string.Empty;
+            public string Status { get; set; } = "open";
+            public DateTime CreatedAt { get; set; }
+            public DateTime LastActivity { get; set; }
+            public bool Processed { get; set; } = false;
+            public bool Excluded { get; set; } = false;
+            public string? ExcludedReason { get; set; } = null;
+        }
+
+        /// <summary>
+        /// Ottiene una sessione dal DB per session_id
+        /// </summary>
+        public async Task<SessionDbRow?> GetSessionByIdAsync(string sessionId)
+        {
+            const string sql = "SELECT * FROM Sessions WHERE session_id = @SessionId";
+
+            try
+            {
+                using var connection = new MySqlConnection(_connectionString);
+                await connection.OpenAsync();
+
+                using var command = new MySqlCommand(sql, connection);
+                command.Parameters.AddWithValue("@SessionId", sessionId);
+
+                using var reader = await command.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    return new SessionDbRow
+                    {
+                        Id = reader.GetInt32("id"),
+                        SessionId = reader.GetString("session_id"),
+                        Name = reader.IsDBNull(reader.GetOrdinal("name")) ? null : reader.GetString("name"),
+                        WorkingDirectory = reader.GetString("working_directory"),
+                        Status = reader.GetString("status"),
+                        CreatedAt = reader.GetDateTime("created_at"),
+                        LastActivity = reader.GetDateTime("last_activity"),
+                        Processed = reader.GetBoolean("processed"),
+                        Excluded = reader.GetBoolean("excluded"),
+                        ExcludedReason = reader.IsDBNull(reader.GetOrdinal("excluded_reason")) ? null : reader.GetString("excluded_reason")
+                    };
+                }
+
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to get session by ID: {SessionId}", sessionId);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Ottiene tutte le sessioni aperte (status = 'open')
+        /// </summary>
+        public async Task<List<SessionDbRow>> GetOpenSessionsAsync()
+        {
+            const string sql = "SELECT * FROM Sessions WHERE status = 'open' ORDER BY last_activity DESC";
+
+            var sessions = new List<SessionDbRow>();
+
+            try
+            {
+                using var connection = new MySqlConnection(_connectionString);
+                await connection.OpenAsync();
+
+                using var command = new MySqlCommand(sql, connection);
+                using var reader = await command.ExecuteReaderAsync();
+
+                while (await reader.ReadAsync())
+                {
+                    sessions.Add(new SessionDbRow
+                    {
+                        Id = reader.GetInt32("id"),
+                        SessionId = reader.GetString("session_id"),
+                        Name = reader.IsDBNull(reader.GetOrdinal("name")) ? null : reader.GetString("name"),
+                        WorkingDirectory = reader.GetString("working_directory"),
+                        Status = reader.GetString("status"),
+                        CreatedAt = reader.GetDateTime("created_at"),
+                        LastActivity = reader.GetDateTime("last_activity"),
+                        Processed = reader.GetBoolean("processed"),
+                        Excluded = reader.GetBoolean("excluded"),
+                        ExcludedReason = reader.IsDBNull(reader.GetOrdinal("excluded_reason")) ? null : reader.GetString("excluded_reason")
+                    });
+                }
+
+                Log.Information("Retrieved {Count} open sessions", sessions.Count);
+                return sessions;
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to get open sessions");
+                return sessions;
+            }
+        }
+
+        /// <summary>
+        /// Ottiene tutte le sessioni chiuse (status = 'closed') non escluse.
+        /// Le sessioni escluse (excluded = TRUE) non vengono restituite.
+        /// </summary>
+        public async Task<List<SessionDbRow>> GetClosedSessionsAsync()
+        {
+            const string sql = "SELECT * FROM Sessions WHERE status = 'closed' AND excluded = FALSE ORDER BY last_activity DESC";
+
+            var sessions = new List<SessionDbRow>();
+
+            try
+            {
+                using var connection = new MySqlConnection(_connectionString);
+                await connection.OpenAsync();
+
+                using var command = new MySqlCommand(sql, connection);
+                using var reader = await command.ExecuteReaderAsync();
+
+                while (await reader.ReadAsync())
+                {
+                    sessions.Add(new SessionDbRow
+                    {
+                        Id = reader.GetInt32("id"),
+                        SessionId = reader.GetString("session_id"),
+                        Name = reader.IsDBNull(reader.GetOrdinal("name")) ? null : reader.GetString("name"),
+                        WorkingDirectory = reader.GetString("working_directory"),
+                        Status = reader.GetString("status"),
+                        CreatedAt = reader.GetDateTime("created_at"),
+                        LastActivity = reader.GetDateTime("last_activity"),
+                        Processed = reader.GetBoolean("processed"),
+                        Excluded = reader.GetBoolean("excluded"),
+                        ExcludedReason = reader.IsDBNull(reader.GetOrdinal("excluded_reason")) ? null : reader.GetString("excluded_reason")
+                    });
+                }
+
+                Log.Information("Retrieved {Count} closed non-excluded sessions", sessions.Count);
+                return sessions;
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to get closed sessions");
+                return sessions;
+            }
+        }
+
+        /// <summary>
+        /// Marca una sessione come processata e imposta il flag excluded con il motivo.
+        /// Chiamato dopo aver verificato se una sessione è di tipo "summary" o "file-history-snapshot".
+        /// </summary>
+        /// <param name="sessionId">UUID della sessione</param>
+        /// <param name="isExcluded">True se la sessione deve essere esclusa</param>
+        /// <param name="excludedReason">Motivo dell'esclusione (es: "summary", "file-history-snapshot"), null se non esclusa</param>
+        public async Task MarkSessionAsProcessedAsync(string sessionId, bool isExcluded, string? excludedReason = null)
+        {
+            const string sql = @"
+                UPDATE Sessions
+                SET processed = TRUE, excluded = @IsExcluded, excluded_reason = @ExcludedReason
+                WHERE session_id = @SessionId";
+
+            try
+            {
+                using var connection = new MySqlConnection(_connectionString);
+                await connection.OpenAsync();
+
+                using var command = new MySqlCommand(sql, connection);
+                command.Parameters.AddWithValue("@SessionId", sessionId);
+                command.Parameters.AddWithValue("@IsExcluded", isExcluded);
+                command.Parameters.AddWithValue("@ExcludedReason", excludedReason ?? (object)DBNull.Value);
+
+                var rowsAffected = await command.ExecuteNonQueryAsync();
+
+                if (rowsAffected > 0)
+                {
+                    Log.Debug("Marked session as processed: {SessionId}, Excluded: {IsExcluded}, Reason: {Reason}",
+                             sessionId, isExcluded, excludedReason ?? "N/A");
+                }
+                else
+                {
+                    Log.Warning("Failed to mark session as processed (not found): {SessionId}", sessionId);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to mark session as processed: {SessionId}", sessionId);
+            }
+        }
+
+        /// <summary>
+        /// Resetta il flag processed di tutte le sessioni a FALSE.
+        /// Utilizzato per forzare una riscansione completa del filesystem preservando i nomi assegnati.
+        /// I file verranno riprocessati alla prossima scansione.
+        /// </summary>
+        public async Task ResetProcessedFlagAsync()
+        {
+            const string sql = "UPDATE Sessions SET processed = FALSE";
+
+            try
+            {
+                using var connection = new MySqlConnection(_connectionString);
+                await connection.OpenAsync();
+
+                using var command = new MySqlCommand(sql, connection);
+                var rowsAffected = await command.ExecuteNonQueryAsync();
+
+                Log.Information("Reset processed flag for {Count} sessions", rowsAffected);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to reset processed flag");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Rimuove dal database tutte le sessioni che non sono nella lista fornita (garbage collection).
+        /// Utilizzato per sincronizzare il database con il filesystem: rimuove sessioni orfane
+        /// (file .jsonl cancellati ma record ancora nel DB).
+        /// Il filesystem è la single source of truth.
+        /// </summary>
+        /// <param name="validSessionIds">Lista di session_id validi trovati nel filesystem</param>
+        /// <returns>Numero di sessioni rimosse</returns>
+        public async Task<int> RemoveOrphanedSessionsAsync(List<string> validSessionIds)
+        {
+            if (validSessionIds == null || validSessionIds.Count == 0)
+            {
+                Log.Warning("No valid session IDs provided to RemoveOrphanedSessionsAsync - skipping garbage collection");
+                return 0;
+            }
+
+            try
+            {
+                using var connection = new MySqlConnection(_connectionString);
+                await connection.OpenAsync();
+
+                // Prima: ottieni lista di sessioni orfane per logging
+                var orphanedSessionsSql = $@"
+                    SELECT session_id, name, working_directory
+                    FROM Sessions
+                    WHERE session_id NOT IN ({string.Join(",", validSessionIds.Select(id => $"'{id}'"))})";
+
+                var orphanedSessions = new List<(string sessionId, string name, string workingDir)>();
+
+                using (var selectCommand = new MySqlCommand(orphanedSessionsSql, connection))
+                {
+                    using var reader = await selectCommand.ExecuteReaderAsync();
+                    while (await reader.ReadAsync())
+                    {
+                        orphanedSessions.Add((
+                            reader.GetString("session_id"),
+                            reader.IsDBNull(reader.GetOrdinal("name")) ? "(no name)" : reader.GetString("name"),
+                            reader.GetString("working_directory")
+                        ));
+                    }
+                }
+
+                if (orphanedSessions.Count == 0)
+                {
+                    Log.Information("No orphaned sessions found - database is clean");
+                    return 0;
+                }
+
+                // Log dettagliato delle sessioni da rimuovere
+                Log.Warning("Found {Count} orphaned sessions (files deleted from filesystem):", orphanedSessions.Count);
+                foreach (var session in orphanedSessions)
+                {
+                    Log.Warning("  - Removing: {SessionId} | Name: {Name} | WorkingDir: {WorkingDir}",
+                        session.sessionId, session.name, session.workingDir);
+                }
+
+                // DELETE: rimuovi sessioni orfane
+                // NOTA: I messaggi associati verranno rimossi automaticamente tramite CASCADE DELETE
+                // se la foreign key è configurata con ON DELETE CASCADE
+                var deleteSql = $@"
+                    DELETE FROM Sessions
+                    WHERE session_id NOT IN ({string.Join(",", validSessionIds.Select(id => $"'{id}'"))})";
+
+                using var deleteCommand = new MySqlCommand(deleteSql, connection);
+                var rowsDeleted = await deleteCommand.ExecuteNonQueryAsync();
+
+                Log.Information("Garbage collection completed: removed {Count} orphaned sessions", rowsDeleted);
+                return rowsDeleted;
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to remove orphaned sessions");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Inserisce una nuova sessione nel DB se non esiste già.
+        /// Utilizza INSERT IGNORE per evitare di sovrascrivere sessioni esistenti.
+        /// </summary>
+        /// <param name="sessionId">UUID della sessione</param>
+        /// <param name="name">Nome della sessione (può essere vuoto)</param>
+        /// <param name="workingDirectory">Working directory della sessione</param>
+        /// <param name="lastActivity">Data ultima attività (default NOW se non specificata)</param>
+        /// <returns>True se la sessione è stata inserita, False se esisteva già</returns>
+        public async Task<bool> InsertSessionAsync(string sessionId, string? name, string workingDirectory, DateTime? lastActivity = null)
+        {
+            const string sql = @"
+                INSERT IGNORE INTO Sessions (session_id, name, working_directory, status, last_activity)
+                VALUES (@SessionId, @Name, @WorkingDirectory, 'closed', @LastActivity)";
+
+            try
+            {
+                using var connection = new MySqlConnection(_connectionString);
+                await connection.OpenAsync();
+
+                using var command = new MySqlCommand(sql, connection);
+                command.Parameters.AddWithValue("@SessionId", sessionId);
+                command.Parameters.AddWithValue("@Name", string.IsNullOrWhiteSpace(name) ? (object)DBNull.Value : name);
+                command.Parameters.AddWithValue("@WorkingDirectory", workingDirectory);
+                command.Parameters.AddWithValue("@LastActivity", lastActivity ?? DateTime.Now);
+
+                var rowsAffected = await command.ExecuteNonQueryAsync();
+
+                if (rowsAffected > 0)
+                {
+                    Log.Debug("Inserted new session: {SessionId} - Name: {Name}, WorkingDir: {WorkingDir}, LastActivity: {LastActivity}",
+                        sessionId, name ?? "(empty)", workingDirectory, lastActivity ?? DateTime.Now);
+                    return true;
+                }
+                else
+                {
+                    Log.Debug("Session already exists: {SessionId}", sessionId);
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to insert session: {SessionId}", sessionId);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Aggiorna il nome di una sessione
+        /// </summary>
+        public async Task UpdateSessionNameAsync(string sessionId, string name)
+        {
+            const string sql = "UPDATE Sessions SET name = @Name WHERE session_id = @SessionId";
+
+            try
+            {
+                using var connection = new MySqlConnection(_connectionString);
+                await connection.OpenAsync();
+
+                using var command = new MySqlCommand(sql, connection);
+                command.Parameters.AddWithValue("@Name", name);
+                command.Parameters.AddWithValue("@SessionId", sessionId);
+
+                await command.ExecuteNonQueryAsync();
+
+                Log.Information("Updated session name: {SessionId} → {Name}", sessionId, name);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to update session name: {SessionId}", sessionId);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Aggiorna lo status di una sessione
+        /// </summary>
+        public async Task UpdateSessionStatusAsync(string sessionId, string status)
+        {
+            const string sql = "UPDATE Sessions SET status = @Status WHERE session_id = @SessionId";
+
+            try
+            {
+                using var connection = new MySqlConnection(_connectionString);
+                await connection.OpenAsync();
+
+                using var command = new MySqlCommand(sql, connection);
+                command.Parameters.AddWithValue("@Status", status);
+                command.Parameters.AddWithValue("@SessionId", sessionId);
+
+                await command.ExecuteNonQueryAsync();
+
+                Log.Information("Updated session status: {SessionId} → {Status}", sessionId, status);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to update session status: {SessionId}", sessionId);
+                throw;
+            }
+        }
     }
 }

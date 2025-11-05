@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="ClaudeCodeMAUI.Views.SessionTabContent">
+
+    <Grid RowDefinitions="Auto,Auto,*">
+        <!-- Working Directory Bar con Context ID -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+            <!-- Working Directory (sinistra) -->
+            <Entry x:Name="WorkingDirectoryLabel"
+                   Grid.Column="0"
+                   IsReadOnly="True"
+                   FontFamily="Consolas"
+                   FontSize="11"
+                   TextColor="Yellow"
+                   BackgroundColor="#333333"
+                   HorizontalTextAlignment="Start"
+                   VerticalTextAlignment="Center"
+                   Placeholder="Working Directory: ..." />
+
+            <!-- Context ID (destra) -->
+            <Entry x:Name="ContextIdLabel"
+                   Grid.Column="1"
+                   IsReadOnly="True"
+                   FontFamily="Consolas"
+                   FontSize="11"
+                   TextColor="Cyan"
+                   BackgroundColor="#333333"
+                   HorizontalTextAlignment="End"
+                   VerticalTextAlignment="Center"
+                   MinimumWidthRequest="400"
+                   Placeholder="Context ID: ..." />
+        </Grid>
+
+        <!-- Token Budget Bar -->
+        <Entry x:Name="TokenBudgetLabel"
+               Grid.Row="1"
+               IsReadOnly="True"
+               FontFamily="Consolas"
+               FontSize="11"
+               TextColor="LightGreen"
+               BackgroundColor="#333333"
+               HorizontalTextAlignment="End"
+               VerticalTextAlignment="Center"
+               Margin="0,2,0,0"
+               Placeholder="Context: ..." />
+
+        <!-- Output Area - WebView con HTML rendering -->
+        <Border Grid.Row="2"
+                Stroke="Gray"
+                StrokeThickness="1"
+                Margin="0,5,0,10">
+            <WebView x:Name="ConversationWebView"
+                     VerticalOptions="FillAndExpand"
+                     HorizontalOptions="FillAndExpand" />
+        </Border>
+    </Grid>
+
+</ContentView>

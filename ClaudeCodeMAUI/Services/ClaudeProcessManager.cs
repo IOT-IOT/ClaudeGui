@@ -43,6 +43,7 @@ namespace ClaudeCodeMAUI.Services
         public event EventHandler<JsonLineReceivedEventArgs>? JsonLineReceived;
         public event EventHandler<ProcessCompletedEventArgs>? ProcessCompleted;
         public event EventHandler<string>? ErrorReceived;
+        public event EventHandler<bool>? IsRunningChanged;
 
         /// <summary>
         /// Constructor
@@ -103,7 +104,7 @@ namespace ClaudeCodeMAUI.Services
                 Log.Information("Process started successfully!");
 
                 _stdinWriter = _process.StandardInput;
-                _isRunning = true;
+                SetIsRunning(true);
 
                 // Start async reading of stdout and stderr on background threads
                 Log.Information("Starting async read tasks...");
@@ -252,7 +253,7 @@ namespace ClaudeCodeMAUI.Services
             {
                 _wasKilled = true;
                 _process.Kill(entireProcessTree: true);
-                _isRunning = false;
+                SetIsRunning(false);
 
                 Log.Warning("Claude process killed (PID: {ProcessId})", _process.Id);
 
@@ -304,7 +305,7 @@ namespace ClaudeCodeMAUI.Services
                 else
                 {
                     Log.Information("Claude process exited gracefully");
-                    _isRunning = false;
+                    SetIsRunning(false);
                 }
             }
             catch (Exception ex)
@@ -319,7 +320,7 @@ namespace ClaudeCodeMAUI.Services
         /// </summary>
         private void OnProcessExited(object? sender, EventArgs e)
         {
-            _isRunning = false;
+            SetIsRunning(false);
 
             var exitCode = _process?.ExitCode ?? -1;
             Log.Information("Claude process exited (ExitCode: {ExitCode}, WasKilled: {WasKilled})", exitCode, _wasKilled);
@@ -329,6 +330,49 @@ namespace ClaudeCodeMAUI.Services
                 ExitCode = exitCode,
                 WasKilled = _wasKilled
             });
+        }
+
+        /// <summary>
+        /// Imposta lo stato IsRunning e notifica i subscriber dell'evento IsRunningChanged.
+        /// Questo metodo centralizza tutti i cambiamenti di stato per garantire
+        /// che l'evento venga sempre sollevato quando lo stato cambia.
+        /// </summary>
+        private void SetIsRunning(bool value)
+        {
+            if (_isRunning != value)
+            {
+                _isRunning = value;
+                IsRunningChanged?.Invoke(this, value);
+                Log.Debug("IsRunning changed to: {IsRunning}", value);
+            }
+        }
+
+        /// <summary>
+        /// Invia il comando "exit" a Claude per chiudere la sessione in modo pulito.
+        /// Questo comando:
+        /// - Chiude la sessione corrente
+        /// - Aggiorna lo status nel database a 'closed'
+        /// - Causa la terminazione del processo Claude
+        /// - Dovrebbe chiudere il tab nell'UI
+        /// </summary>
+        public async Task SendExitCommandAsync()
+        {
+            if (!_isRunning || _stdinWriter == null)
+            {
+                throw new InvalidOperationException("Process is not running");
+            }
+
+            try
+            {
+                Log.Information("Sending 'exit' command to Claude session: {SessionId}", _sessionId ?? "unknown");
+                await SendMessageAsync("exit");
+                Log.Information("Exit command sent successfully");
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to send exit command to Claude");
+                throw;
+            }
         }
 
         /// <summary>

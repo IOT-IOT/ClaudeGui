@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+             xmlns:models="clr-namespace:ClaudeCodeMAUI.Models"
              x:Class="ClaudeCodeMAUI.MainPage"
              Title="Claude Code GUI">
 
@@ -10,9 +12,9 @@
         <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
             <!-- Controlli principali sulla sinistra -->
             <HorizontalStackLayout Grid.Column="0" Spacing="10">
-                <Button x:Name="BtnNew"
-                        Text="New Conversation"
-                        Clicked="OnNewConversationClicked" />
+                <Button x:Name="BtnSelectSession"
+                        Text="📂 Seleziona Sessione"
+                        Clicked="OnSelectSessionClicked" />
                 <Button x:Name="BtnStop"
                         Text="Stop"
                         Clicked="OnStopClicked"
@@ -94,58 +96,43 @@
             </HorizontalStackLayout>
         </Grid>
 
-        <!-- Output Area -->
-        <Grid Grid.Row="1" RowDefinitions="Auto,Auto,*">
-            <!-- Working Directory Bar con Context ID -->
-            <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
-                <!-- Working Directory (sinistra) -->
-                <Entry x:Name="WorkingDirectoryLabel"
-                       Grid.Column="0"
-                       IsReadOnly="True"
-                       FontFamily="Consolas"
-                       FontSize="11"
-                       TextColor="Yellow"
-                       BackgroundColor="#333333"
-                       HorizontalTextAlignment="Start"
-                       VerticalTextAlignment="Center"
-                       Placeholder="Working Directory: ..." />
+        <!-- TabView per gestione multi-sessione -->
+        <Grid Grid.Row="1">
+            <!-- Placeholder quando non ci sono tab aperti -->
+            <VerticalStackLayout x:Name="NoSessionsPlaceholder"
+                                 IsVisible="True"
+                                 VerticalOptions="Center"
+                                 HorizontalOptions="Center"
+                                 Spacing="20">
+                <Label Text="📂 Nessuna Sessione Aperta"
+                       FontSize="24"
+                       FontAttributes="Bold"
+                       HorizontalOptions="Center"
+                       TextColor="Gray" />
+                <Label Text="Clicca su 'Seleziona Sessione' per aprire una sessione esistente o crearne una nuova"
+                       FontSize="14"
+                       HorizontalOptions="Center"
+                       TextColor="LightGray" />
+            </VerticalStackLayout>
 
-                <!-- Context ID (destra) -->
-                <Entry x:Name="ContextIdLabel"
-                       Grid.Column="1"
-                       IsReadOnly="True"
-                       FontFamily="Consolas"
-                       FontSize="11"
-                       TextColor="Cyan"
-                       BackgroundColor="#333333"
-                       HorizontalTextAlignment="End"
-                       VerticalTextAlignment="Center"
-                       MinimumWidthRequest="400"
-                       Placeholder="Context ID: ..." />
+            <!-- TabBar semplificato (usiamo Grid con TabBar + ContentView) -->
+            <Grid x:Name="SessionTabContainer"
+                  IsVisible="False"
+                  RowDefinitions="Auto,*">
+
+                <!-- Tab Headers -->
+                <ScrollView Grid.Row="0"
+                            Orientation="Horizontal"
+                            HeightRequest="40"
+                            BackgroundColor="#1E1E1E">
+                    <HorizontalStackLayout x:Name="TabHeadersContainer" Spacing="2" />
+                </ScrollView>
+
+                <!-- Tab Content -->
+                <ContentView x:Name="CurrentTabContent"
+                             Grid.Row="1"
+                             BackgroundColor="#252526" />
             </Grid>
-
-            <!-- Token Budget Bar -->
-            <Entry x:Name="TokenBudgetLabel"
-                   Grid.Row="1"
-                   IsReadOnly="True"
-                   FontFamily="Consolas"
-                   FontSize="11"
-                   TextColor="LightGreen"
-                   BackgroundColor="#333333"
-                   HorizontalTextAlignment="End"
-                   VerticalTextAlignment="Center"
-                   Margin="0,2,0,0"
-                   Placeholder="Context: ..." />
-
-            <!-- Output Area - WebView con HTML rendering -->
-            <Border Grid.Row="2"
-                    Stroke="Gray"
-                    StrokeThickness="1"
-                    Margin="0,5,0,10">
-                <WebView x:Name="ConversationWebView"
-                         VerticalOptions="FillAndExpand"
-                         HorizontalOptions="FillAndExpand" />
-            </Border>
         </Grid>
 
         <!-- Input Area -->

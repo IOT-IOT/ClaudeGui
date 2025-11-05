@@ -4,6 +4,7 @@ using System.Reflection;
 using Serilog;
 using Serilog.Extensions.Logging;
 using ClaudeCodeMAUI.Services;
+using CommunityToolkit.Maui;
 
 namespace ClaudeCodeMAUI;
 
@@ -14,6 +15,7 @@ public static class MauiProgram
 		var builder = MauiApp.CreateBuilder();
 		builder
 			.UseMauiApp<App>()
+			.UseMauiCommunityToolkit()
 			.ConfigureFonts(fonts =>
 			{
 				fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
@@ -49,15 +51,23 @@ public static class MauiProgram
 
 		if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
 		{
-			builder.Services.AddSingleton(sp => new DbService(username, password));
+			var dbService = new DbService(username, password);
+			builder.Services.AddSingleton(dbService);
+			builder.Services.AddSingleton(sp => new SessionScannerService(dbService));
 		}
 		else
 		{
 			Log.Warning("Database credentials not found in User Secrets");
 		}
 
-		// Registra le pagine
-		builder.Services.AddSingleton<MainPage>();
+		// Registra le pagine con factory per dependency injection
+		builder.Services.AddSingleton<MainPage>(sp =>
+		{
+			var config = sp.GetRequiredService<IConfiguration>();
+			var dbService = sp.GetService<DbService>();
+			var sessionScanner = sp.GetService<SessionScannerService>();
+			return new MainPage(config, dbService, sessionScanner);
+		});
 
 #if DEBUG
 		builder.Logging.AddDebug();
