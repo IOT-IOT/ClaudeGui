@@ -936,15 +936,19 @@ public partial class MainPage : ContentPage
 
             _lastProcessedTimestamp = timestamp;
 
-            // Rileva campi sconosciuti
+            // Rileva campi sconosciuti - LOG ma CONTINUA
             if (_dbService != null)
             {
                 var unknownFields = _dbService.DetectUnknownFields(root, _dbService.GetKnownJsonFields());
                 if (unknownFields.Count > 0)
                 {
                     var uuid = ExtractUuid(root);
-                    await ShowUnknownFieldsDialogAsync(jsonLine, unknownFields, uuid);
-                    return; // INTERROMPI
+                    Log.Warning("Unknown fields detected in live message {Uuid}: {Fields}",
+                        uuid, string.Join(", ", unknownFields));
+
+                    // NON salvare messaggi con campi sconosciuti in tempo reale
+                    // Ma NON interrompere il processing - continua con i successivi
+                    return;
                 }
             }
 

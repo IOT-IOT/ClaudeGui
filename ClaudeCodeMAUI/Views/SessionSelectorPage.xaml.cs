@@ -688,22 +688,16 @@ namespace ClaudeCodeMAUI.Views
                     });
 
                     // Esegui l'import con progress e cancellation support
-                    int imported = 0;
-                    List<string> unknownFields = new List<string>();
-                    string? errorUuid = null;
+                    Models.MessageImportResult? result = null;
                     bool cancelled = false;
 
                     try
                     {
-                        var result = await _dbService.ImportMessagesFromJsonlAsync(
+                        result = await _dbService.ImportMessagesFromJsonlAsync(
                             selectedItem.SessionId,
                             filePath,
                             progress,
                             progressDialog.CancellationToken);
-
-                        imported = result.imported;
-                        unknownFields = result.unknownFields;
-                        errorUuid = result.errorUuid;
 
                         // Segna come completato
                         progressDialog.Complete();
@@ -720,31 +714,36 @@ namespace ClaudeCodeMAUI.Views
                     await Navigation.PopModalAsync();
 
                     // Se cancellato, esci senza mostrare altri dialog
-                    if (cancelled)
+                    if (cancelled || result == null)
                         return;
 
-                    // Mostra risultati
-                    if (unknownFields.Count > 0)
+                    // Mostra risultati con summary completo
+                    if (result.HasUnknownFields)
                     {
-                        // Trova la riga JSON con l'errore per mostrarla nel dialog
-                        string? errorLine = await FindJsonLineByUuidAsync(filePath, errorUuid);
-                        var dialog = new UnknownFieldsDialog(errorLine ?? "", unknownFields, errorUuid ?? "unknown");
-                        await Navigation.PushModalAsync(new NavigationPage(dialog));
+                        var uniqueFields = result.AllUnknownFieldsUnique;
+                        var fieldsPreview = string.Join(", ", uniqueFields.Take(5));
+                        if (uniqueFields.Count > 5)
+                            fieldsPreview += $" ... (+{uniqueFields.Count - 5} altri)";
 
-                        await DisplayAlert("Import Interrotto",
-                            $"Import interrotto dopo {imported} messaggi.\n\n" +
-                            $"Trovati {unknownFields.Count} campi sconosciuti.",
+                        await DisplayAlert("Import Completato con Warning",
+                            $"✅ Importati: {result.ImportedCount} messaggi\n" +
+                            $"⚠️ Saltati: {result.SkippedCount} messaggi con campi sconosciuti\n" +
+                            $"📊 Totale: {result.TotalProcessed} messaggi processati\n\n" +
+                            $"Campi sconosciuti trovati ({uniqueFields.Count}):\n{fieldsPreview}",
                             "OK");
+
+                        Log.Warning("Import completed with unknown fields: {UniqueCount} unique fields in {MessageCount} messages",
+                            uniqueFields.Count, result.MessagesWithUnknownFieldsCount);
                     }
                     else
                     {
                         await DisplayAlert("Import Completato",
-                            $"Importati con successo {imported} messaggi nel database.",
+                            $"✅ Importati con successo {result.ImportedCount} messaggi nel database.\n" +
+                            $"📊 Totale processato: {result.TotalProcessed} messaggi",
                             "OK");
-                    }
 
-                    Log.Information("Message import completed: {Imported} imported, {UnknownCount} unknown fields",
-                        imported, unknownFields.Count);
+                        Log.Information("Import completed successfully: {Imported} imported", result.ImportedCount);
+                    }
                 }
             }
             catch (Exception ex)

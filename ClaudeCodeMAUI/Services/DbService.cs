@@ -1012,23 +1012,22 @@ namespace ClaudeCodeMAUI.Services
         }
 
         /// <summary>
-        /// Importa messaggi da file .jsonl nel database
-        /// Rileva campi sconosciuti e interrompe se ne trova
+        /// Importa messaggi da file .jsonl nel database.
+        /// Rileva campi sconosciuti ma CONTINUA l'import, raccogliendo tutti gli unknown fields trovati.
         /// </summary>
         /// <param name="sessionId">ID della sessione</param>
         /// <param name="jsonlFilePath">Path del file .jsonl</param>
         /// <param name="progressCallback">Callback per aggiornare progress (current, total)</param>
         /// <param name="cancellationToken">Token per annullare l'operazione</param>
-        /// <returns>Tupla: (messaggi importati, campi sconosciuti, uuid con errore)</returns>
-        public async Task<(int imported, List<string> unknownFields, string? errorUuid)>
-            ImportMessagesFromJsonlAsync(
+        /// <returns>MessageImportResult con dettagli completi dell'import</returns>
+        public async Task<Models.MessageImportResult> ImportMessagesFromJsonlAsync(
                 string sessionId,
                 string jsonlFilePath,
                 IProgress<(int current, int total)>? progressCallback = null,
                 CancellationToken cancellationToken = default)
         {
             var knownFields = GetKnownJsonFields();
-            int imported = 0;
+            var result = new Models.MessageImportResult();
             int totalLines = 0;
 
             try
@@ -1065,12 +1064,19 @@ namespace ClaudeCodeMAUI.Services
                     var json = System.Text.Json.JsonDocument.Parse(line);
                     var root = json.RootElement;
 
-                    // RILEVA CAMPI SCONOSCIUTI
+                    // RILEVA CAMPI SCONOSCIUTI - MA CONTINUA!
                     var unknownFields = DetectUnknownFields(root, knownFields);
                     if (unknownFields.Count > 0)
                     {
-                        var errorUuid = root.TryGetProperty("uuid", out var u) ? u.GetString() : null;
-                        return (imported, unknownFields, errorUuid);
+                        var messageUuid = root.TryGetProperty("uuid", out var u) ? u.GetString() : "unknown";
+                        result.UnknownFieldsByMessage[messageUuid] = unknownFields;
+                        result.SkippedCount++;
+
+                        Log.Warning("Unknown fields found in message {Uuid}: {Fields}",
+                            messageUuid, string.Join(", ", unknownFields));
+
+                        progressCallback?.Report((lineNumber, totalLines));
+                        continue; // SKIP questo messaggio ma CONTINUA con i successivi
                     }
 
                     // NESSUN FILTRO - salva TUTTI i tipi
@@ -1096,17 +1102,20 @@ namespace ClaudeCodeMAUI.Services
                     // Salva nel DB (metodo semplificato per import batch)
                     await SaveMessageAsync(sessionId, type ?? "unknown", content, timestamp, uuid);
 
-                    imported++;
+                    result.ImportedCount++;
 
                     // Report progress
                     progressCallback?.Report((lineNumber, totalLines));
                 }
 
-                return (imported, new List<string>(), null);
+                Log.Information("Import completed: {Imported} imported, {Skipped} skipped, {UnknownCount} with unknown fields",
+                    result.ImportedCount, result.SkippedCount, result.MessagesWithUnknownFieldsCount);
+
+                return result;
             }
             catch (OperationCanceledException)
             {
-                Log.Information("Import cancelled by user after {Imported} messages", imported);
+                Log.Information("Import cancelled by user after {Imported} messages", result.ImportedCount);
                 throw;
             }
             catch (Exception ex)
