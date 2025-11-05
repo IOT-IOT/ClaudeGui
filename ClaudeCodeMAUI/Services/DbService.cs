@@ -341,7 +341,10 @@ namespace ClaudeCodeMAUI.Services
             string? requestId = null,
             string? model = null,
             string? usageJson = null,
-            string? messageType = null)
+            string? messageType = null,
+            int? cache5mTokens = null,
+            int? cache1hTokens = null,
+            string? serviceTier = null)
         {
             // Prima ottieni il prossimo numero di sequenza per questa conversazione
             const string getSequenceSql = @"
@@ -353,12 +356,14 @@ namespace ClaudeCodeMAUI.Services
                 INSERT INTO messages (
                     conversation_id, role, content, timestamp, sequence,
                     uuid, parent_uuid, version, git_branch, is_sidechain,
-                    user_type, cwd, request_id, model, usage_json, message_type
+                    user_type, cwd, request_id, model, usage_json, message_type,
+                    cache_5m_tokens, cache_1h_tokens, service_tier
                 )
                 VALUES (
                     @ConversationId, @Role, @Content, @Timestamp, @Sequence,
                     @Uuid, @ParentUuid, @Version, @GitBranch, @IsSidechain,
-                    @UserType, @Cwd, @RequestId, @Model, @UsageJson, @MessageType
+                    @UserType, @Cwd, @RequestId, @Model, @UsageJson, @MessageType,
+                    @Cache5mTokens, @Cache1hTokens, @ServiceTier
                 )
                 ON DUPLICATE KEY UPDATE uuid = uuid";  // Ignora duplicati per uuid
 
@@ -395,6 +400,9 @@ namespace ClaudeCodeMAUI.Services
                     insertCommand.Parameters.AddWithValue("@Model", model ?? (object)DBNull.Value);
                     insertCommand.Parameters.AddWithValue("@UsageJson", usageJson ?? (object)DBNull.Value);
                     insertCommand.Parameters.AddWithValue("@MessageType", messageType ?? role);
+                    insertCommand.Parameters.AddWithValue("@Cache5mTokens", cache5mTokens ?? (object)DBNull.Value);
+                    insertCommand.Parameters.AddWithValue("@Cache1hTokens", cache1hTokens ?? (object)DBNull.Value);
+                    insertCommand.Parameters.AddWithValue("@ServiceTier", serviceTier ?? (object)DBNull.Value);
 
                     await insertCommand.ExecuteNonQueryAsync();
 

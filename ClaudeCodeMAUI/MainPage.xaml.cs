@@ -1047,6 +1047,9 @@ public partial class MainPage : ContentPage
             string? requestId = null;
             string? model = null;
             string? usageJson = null;
+            int? cache5mTokens = null;
+            int? cache1hTokens = null;
+            string? serviceTier = null;
 
             // Per messaggi assistant, estrai requestId, model e usage
             if (root.TryGetProperty("message", out var messageProp))
@@ -1058,7 +1061,22 @@ public partial class MainPage : ContentPage
                     model = modelProp.GetString();
 
                 if (messageProp.TryGetProperty("usage", out var usageProp))
+                {
                     usageJson = usageProp.GetRawText();
+
+                    // Estrai campi cache Anthropic
+                    if (usageProp.TryGetProperty("cache_creation", out var cacheCreation))
+                    {
+                        if (cacheCreation.TryGetProperty("ephemeral_5m_input_tokens", out var cache5m))
+                            cache5mTokens = cache5m.GetInt32();
+
+                        if (cacheCreation.TryGetProperty("ephemeral_1h_input_tokens", out var cache1h))
+                            cache1hTokens = cache1h.GetInt32();
+                    }
+
+                    if (usageProp.TryGetProperty("service_tier", out var tierProp))
+                        serviceTier = tierProp.GetString();
+                }
             }
 
             // Estrai contenuto
@@ -1080,7 +1098,10 @@ public partial class MainPage : ContentPage
                 requestId,
                 model,
                 usageJson,
-                type // messageType = type
+                type, // messageType = type
+                cache5mTokens,
+                cache1hTokens,
+                serviceTier
             );
         }
         catch (Exception ex)
