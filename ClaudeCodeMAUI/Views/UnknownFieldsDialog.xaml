@@ -31,25 +31,51 @@
                    TextColor="LightBlue"
                    BackgroundColor="#2A2A2A" />
 
-            <!-- JSON Completo -->
-            <Label Text="Full JSON:" FontAttributes="Bold" TextColor="White" />
-            <Editor x:Name="JsonEditor"
-                    IsReadOnly="True"
-                    TextColor="White"
-                    BackgroundColor="#2A2A2A"
-                    AutoSize="TextChanges"
-                    MaximumHeightRequest="400" />
+            <!-- JSON Completo con syntax highlighting e menu contestuale -->
+            <Label Text="Full JSON (right-click to open with external editor):"
+                   FontAttributes="Bold"
+                   TextColor="White" />
+            <Frame BackgroundColor="#2A2A2A"
+                   Padding="10"
+                   HasShadow="False">
+                <ScrollView MaximumHeightRequest="400">
+                    <Label x:Name="JsonLabel"
+                           FontFamily="Consolas"
+                           LineBreakMode="CharacterWrap">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnJsonTapped" />
+                        </Label.GestureRecognizers>
+                        <FlyoutBase.ContextFlyout>
+                            <MenuFlyout>
+                                <MenuFlyoutItem Text="📋 Copia JSON"
+                                              Clicked="OnCopyJsonClicked" />
+                                <MenuFlyoutSeparator />
+                                <MenuFlyoutItem Text="🖊️ Apri con VS Code"
+                                              Clicked="OnOpenWithVSCodeClicked" />
+                                <MenuFlyoutItem Text="📝 Apri con Notepad++"
+                                              Clicked="OnOpenWithNotepadPPClicked" />
+                                <MenuFlyoutItem Text="📄 Apri con Editor Predefinito"
+                                              Clicked="OnOpenWithDefaultEditorClicked" />
+                            </MenuFlyout>
+                        </FlyoutBase.ContextFlyout>
+                    </Label>
+                </ScrollView>
+            </Frame>
 
             <!-- Pulsanti -->
-            <HorizontalStackLayout Spacing="10" HorizontalOptions="Center">
-                <Button Text="Copy JSON"
+            <HorizontalStackLayout Spacing="10" HorizontalOptions="Center" Margin="0,10,0,0">
+                <Button Text="📋 Copia JSON"
                         BackgroundColor="#4A6B9A"
                         TextColor="White"
                         Clicked="OnCopyJsonClicked" />
-                <Button Text="Close"
-                        BackgroundColor="#555555"
+                <Button Text="✅ Continua Scansione"
+                        BackgroundColor="#4CAF50"
                         TextColor="White"
-                        Clicked="OnCloseClicked" />
+                        Clicked="OnContinueClicked" />
+                <Button Text="❌ Interrompi"
+                        BackgroundColor="#F44336"
+                        TextColor="White"
+                        Clicked="OnStopClicked" />
             </HorizontalStackLayout>
 
         </VerticalStackLayout>

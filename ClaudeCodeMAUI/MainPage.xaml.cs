@@ -946,17 +946,19 @@ public partial class MainPage : ContentPage
                     Log.Warning("Unknown fields detected in live message {Uuid}: {Fields}",
                         uuid, string.Join(", ", unknownFields));
 
-                    // Mostra dialog per chiedere all'utente cosa fare
-                    var fieldsText = string.Join("\n- ", unknownFields);
+                    // Mostra UnknownFieldsDialog completo con syntax highlighting
                     bool shouldContinue = await MainThread.InvokeOnMainThreadAsync(async () =>
                     {
-                        return await DisplayAlert(
-                            "Campi Sconosciuti Rilevati",
-                            $"Il messaggio live con UUID:\n{uuid}\n\n" +
-                            $"contiene i seguenti campi sconosciuti:\n- {fieldsText}\n\n" +
-                            $"Cosa vuoi fare?",
-                            "Continua Scansione",
-                            "Interrompi Processing");
+                        var dialog = new Views.UnknownFieldsDialog(jsonLine, unknownFields, uuid);
+                        await Navigation.PushModalAsync(new NavigationPage(dialog));
+
+                        // Aspetta che il dialog venga chiuso
+                        while (Navigation.ModalStack.Count > 0)
+                        {
+                            await Task.Delay(100);
+                        }
+
+                        return dialog.ShouldContinue;
                     });
 
                     if (!shouldContinue)

@@ -1018,14 +1018,14 @@ namespace ClaudeCodeMAUI.Services
         /// <param name="sessionId">ID della sessione</param>
         /// <param name="jsonlFilePath">Path del file .jsonl</param>
         /// <param name="progressCallback">Callback per aggiornare progress (current, total)</param>
-        /// <param name="unknownFieldsCallback">Callback per mostrare dialog unknown fields. Return true per continuare, false per interrompere.</param>
+        /// <param name="unknownFieldsCallback">Callback per mostrare dialog unknown fields (jsonLine, uuid, unknownFields). Return true per continuare, false per interrompere.</param>
         /// <param name="cancellationToken">Token per annullare l'operazione</param>
         /// <returns>MessageImportResult con dettagli completi dell'import</returns>
         public async Task<Models.MessageImportResult> ImportMessagesFromJsonlAsync(
                 string sessionId,
                 string jsonlFilePath,
                 IProgress<(int current, int total)>? progressCallback = null,
-                Func<string, List<string>, Task<bool>>? unknownFieldsCallback = null,
+                Func<string, string, List<string>, Task<bool>>? unknownFieldsCallback = null,
                 CancellationToken cancellationToken = default)
         {
             var knownFields = GetKnownJsonFields();
@@ -1080,7 +1080,7 @@ namespace ClaudeCodeMAUI.Services
                         // Chiama callback per mostrare dialog e decidere se continuare
                         if (unknownFieldsCallback != null)
                         {
-                            bool shouldContinue = await unknownFieldsCallback(messageUuid ?? "unknown", unknownFields);
+                            bool shouldContinue = await unknownFieldsCallback(line, messageUuid ?? "unknown", unknownFields);
                             if (!shouldContinue)
                             {
                                 Log.Information("Import interrupted by user at message {Uuid}", messageUuid);

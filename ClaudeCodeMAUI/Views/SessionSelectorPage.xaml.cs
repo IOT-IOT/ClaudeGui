@@ -688,19 +688,19 @@ namespace ClaudeCodeMAUI.Views
                     });
 
                     // Crea il callback per gestire unknown fields
-                    Func<string, List<string>, Task<bool>> unknownFieldsCallback = async (uuid, unknownFields) =>
+                    Func<string, string, List<string>, Task<bool>> unknownFieldsCallback = async (jsonLine, uuid, unknownFields) =>
                     {
-                        // Mostra dialog per chiedere all'utente cosa fare
-                        var fieldsText = string.Join("\n- ", unknownFields);
-                        bool shouldContinue = await DisplayAlert(
-                            "Campi Sconosciuti Rilevati",
-                            $"Il messaggio con UUID:\n{uuid}\n\n" +
-                            $"contiene i seguenti campi sconosciuti:\n- {fieldsText}\n\n" +
-                            $"Cosa vuoi fare?",
-                            "Continua Scansione",
-                            "Interrompi Import");
+                        // Mostra UnknownFieldsDialog completo con syntax highlighting
+                        var dialog = new UnknownFieldsDialog(jsonLine, unknownFields, uuid);
+                        await Navigation.PushModalAsync(new NavigationPage(dialog));
 
-                        return shouldContinue;
+                        // Aspetta che il dialog venga chiuso
+                        while (Navigation.ModalStack.Count > 0)
+                        {
+                            await Task.Delay(100);
+                        }
+
+                        return dialog.ShouldContinue;
                     };
 
                     // Esegui l'import con progress e cancellation support
