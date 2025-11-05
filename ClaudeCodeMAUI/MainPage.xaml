@@ -152,6 +152,7 @@
 
         <!-- Toast Notification Container (overlay globale) -->
         <VerticalStackLayout x:Name="ToastContainer"
+                             StyleId="ToastContainer"
                              Spacing="10"
                              VerticalOptions="End"
                              HorizontalOptions="End"

@@ -5,80 +5,92 @@
              Title="Unknown JSON Fields Detected"
              BackgroundColor="#1E1E1E">
 
-    <ScrollView Padding="20">
-        <VerticalStackLayout Spacing="15">
+    <Grid>
+        <!-- Contenuto principale -->
+        <ScrollView Padding="20">
+            <VerticalStackLayout Spacing="15">
 
-            <!-- Header -->
-            <Label Text="⚠️ Unknown JSON Fields Detected"
-                   FontSize="20"
-                   FontAttributes="Bold"
-                   TextColor="Orange"
-                   HorizontalOptions="Center" />
+                <!-- Header -->
+                <Label Text="⚠️ Unknown JSON Fields Detected"
+                       FontSize="20"
+                       FontAttributes="Bold"
+                       TextColor="Orange"
+                       HorizontalOptions="Center" />
 
-            <Label Text="The following fields were found in the JSON but are not in the known schema:"
-                   TextColor="White"
-                   HorizontalOptions="Center" />
+                <Label Text="The following fields were found in the JSON but are not in the known schema:"
+                       TextColor="White"
+                       HorizontalOptions="Center" />
 
-            <!-- Lista campi sconosciuti -->
-            <Frame BackgroundColor="#2A2A2A" Padding="10">
-                <VerticalStackLayout x:Name="UnknownFieldsContainer" Spacing="5" />
-            </Frame>
+                <!-- Lista campi sconosciuti -->
+                <Frame BackgroundColor="#2A2A2A" Padding="10">
+                    <VerticalStackLayout x:Name="UnknownFieldsContainer" Spacing="5" />
+                </Frame>
 
-            <!-- UUID Messaggio -->
-            <Label Text="Message UUID:" FontAttributes="Bold" TextColor="White" />
-            <Entry x:Name="UuidEntry"
-                   IsReadOnly="True"
-                   TextColor="LightBlue"
-                   BackgroundColor="#2A2A2A" />
+                <!-- UUID Messaggio -->
+                <Label Text="Message UUID:" FontAttributes="Bold" TextColor="White" />
+                <Entry x:Name="UuidEntry"
+                       IsReadOnly="True"
+                       TextColor="LightBlue"
+                       BackgroundColor="#2A2A2A" />
 
-            <!-- JSON Completo con syntax highlighting e menu contestuale -->
-            <Label Text="Full JSON (right-click to open with external editor):"
-                   FontAttributes="Bold"
-                   TextColor="White" />
-            <Frame BackgroundColor="#2A2A2A"
-                   Padding="10"
-                   HasShadow="False">
-                <ScrollView MaximumHeightRequest="400">
-                    <Label x:Name="JsonLabel"
-                           FontFamily="Consolas"
-                           LineBreakMode="CharacterWrap">
-                        <Label.GestureRecognizers>
-                            <TapGestureRecognizer Tapped="OnJsonTapped" />
-                        </Label.GestureRecognizers>
-                        <FlyoutBase.ContextFlyout>
-                            <MenuFlyout>
-                                <MenuFlyoutItem Text="📋 Copia JSON"
-                                              Clicked="OnCopyJsonClicked" />
-                                <MenuFlyoutSeparator />
-                                <MenuFlyoutItem Text="🖊️ Apri con VS Code"
-                                              Clicked="OnOpenWithVSCodeClicked" />
-                                <MenuFlyoutItem Text="📝 Apri con Notepad++"
-                                              Clicked="OnOpenWithNotepadPPClicked" />
-                                <MenuFlyoutItem Text="📄 Apri con Editor Predefinito"
-                                              Clicked="OnOpenWithDefaultEditorClicked" />
-                            </MenuFlyout>
-                        </FlyoutBase.ContextFlyout>
-                    </Label>
-                </ScrollView>
-            </Frame>
+                <!-- JSON Completo con syntax highlighting e menu contestuale -->
+                <Label Text="Full JSON (right-click to open with external editor):"
+                       FontAttributes="Bold"
+                       TextColor="White" />
+                <Frame BackgroundColor="#2A2A2A"
+                       Padding="10"
+                       HasShadow="False">
+                    <ScrollView MaximumHeightRequest="400">
+                        <Label x:Name="JsonLabel"
+                               FontFamily="Consolas"
+                               LineBreakMode="CharacterWrap">
+                            <Label.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnJsonTapped" />
+                            </Label.GestureRecognizers>
+                            <FlyoutBase.ContextFlyout>
+                                <MenuFlyout>
+                                    <MenuFlyoutItem Text="📋 Copia JSON"
+                                                  Clicked="OnCopyJsonClicked" />
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem Text="🖊️ Apri con VS Code"
+                                                  Clicked="OnOpenWithVSCodeClicked" />
+                                    <MenuFlyoutItem Text="📝 Apri con Notepad++"
+                                                  Clicked="OnOpenWithNotepadPPClicked" />
+                                    <MenuFlyoutItem Text="📄 Apri con Editor Predefinito"
+                                                  Clicked="OnOpenWithDefaultEditorClicked" />
+                                </MenuFlyout>
+                            </FlyoutBase.ContextFlyout>
+                        </Label>
+                    </ScrollView>
+                </Frame>
 
-            <!-- Pulsanti -->
-            <HorizontalStackLayout Spacing="10" HorizontalOptions="Center" Margin="0,10,0,0">
-                <Button Text="📋 Copia JSON"
-                        BackgroundColor="#4A6B9A"
-                        TextColor="White"
-                        Clicked="OnCopyJsonClicked" />
-                <Button Text="✅ Continua Scansione"
-                        BackgroundColor="#4CAF50"
-                        TextColor="White"
-                        Clicked="OnContinueClicked" />
-                <Button Text="❌ Interrompi"
-                        BackgroundColor="#F44336"
-                        TextColor="White"
-                        Clicked="OnStopClicked" />
-            </HorizontalStackLayout>
+                <!-- Pulsanti -->
+                <HorizontalStackLayout Spacing="10" HorizontalOptions="Center" Margin="0,10,0,0">
+                    <Button Text="📋 Copia JSON"
+                            BackgroundColor="#4A6B9A"
+                            TextColor="White"
+                            Clicked="OnCopyJsonClicked" />
+                    <Button Text="✅ Continua Scansione"
+                            BackgroundColor="#4CAF50"
+                            TextColor="White"
+                            Clicked="OnContinueClicked" />
+                    <Button Text="❌ Interrompi"
+                            BackgroundColor="#F44336"
+                            TextColor="White"
+                            Clicked="OnStopClicked" />
+                </HorizontalStackLayout>
 
-        </VerticalStackLayout>
-    </ScrollView>
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <!-- Toast Notification Container (overlay locale per questo dialog) -->
+        <VerticalStackLayout x:Name="ToastContainer"
+                             StyleId="ToastContainer"
+                             Spacing="10"
+                             VerticalOptions="End"
+                             HorizontalOptions="End"
+                             Padding="0,0,20,20"
+                             InputTransparent="True" />
+    </Grid>
 
 </ContentPage>

@@ -22,9 +22,8 @@ public partial class App : Application
 
 		_mainWindow = new Window(appShell);
 
-		// Inizializza il ToastService (il container sarà aggiunto a MainPage)
-		// Per ora lascia vuoto, verrà inizializzato quando MainPage viene creata
-		ToastService.Instance.Initialize(null);
+		// Il ToastService ora usa auto-detection e non richiede inizializzazione
+		// Il container verrà trovato automaticamente nella pagina corrente
 
 		// Carica e applica la posizione e dimensione salvate della finestra
 		RestoreWindowBounds();

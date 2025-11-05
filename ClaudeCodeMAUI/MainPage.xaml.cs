@@ -54,7 +54,8 @@ public partial class MainPage : ContentPage
         // Inizializza UI
         InitializeInputEditor();
 
-        // Inizializza ToastService con il container
+        // Inizializza ToastService con il container come fallback
+        // (Il ToastService ora usa auto-detection ma manteniamo il fallback)
         ToastService.Instance.Initialize(ToastContainer);
 
         // Carica tema salvato
