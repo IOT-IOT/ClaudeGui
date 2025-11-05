@@ -660,17 +660,6 @@ namespace ClaudeCodeMAUI.Views
                         return;
                     }
 
-                    bool confirm = await DisplayAlert(
-                        "Aggiorna Messaggi",
-                        $"Importare tutti i messaggi dal file .jsonl nel database?\n\n" +
-                        $"Sessione: {selectedItem.DisplayName}\n" +
-                        $"Eventuali messaggi duplicati (stesso UUID) verranno ignorati.",
-                        "Sì, Importa",
-                        "Annulla");
-
-                    if (!confirm)
-                        return;
-
                     Log.Information("Starting message import from file: {FilePath}", filePath);
 
                     // Crea e mostra il progress dialog
