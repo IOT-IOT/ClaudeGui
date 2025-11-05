@@ -1,0 +1,9 @@
+# Banned API Symbols for ClaudeCodeMAUI
+# See: https://github.com/dotnet/roslyn-analyzers/blob/main/src/Microsoft.CodeAnalysis.BannedApiAnalyzers/BannedApiAnalyzers.Help.md
+
+# Ban DisplayAlert methods - use DisplaySelectableAlert instead (DisplayAlert does not allow text selection)
+M:Microsoft.Maui.Controls.Page.DisplayAlert(System.String,System.String,System.String); Use DisplaySelectableAlert instead - DisplayAlert does not allow text selection
+M:Microsoft.Maui.Controls.Page.DisplayAlert(System.String,System.String,System.String,System.String); Use DisplaySelectableAlert instead - DisplayAlert does not allow text selection
+
+# Ban DisplayActionSheet - use DisplaySelectableActionSheet instead (DisplayActionSheet does not allow text selection)
+M:Microsoft.Maui.Controls.Page.DisplayActionSheet(System.String,System.String,System.String,System.String[]); Use DisplaySelectableActionSheet instead - DisplayActionSheet does not allow text selection

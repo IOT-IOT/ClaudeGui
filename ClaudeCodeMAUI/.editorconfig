@@ -1,0 +1,6 @@
+# EditorConfig for ClaudeCodeMAUI
+root = true
+
+[*.cs]
+# Banned API Analyzer - treat as ERROR instead of warning
+dotnet_diagnostic.RS0030.severity = error

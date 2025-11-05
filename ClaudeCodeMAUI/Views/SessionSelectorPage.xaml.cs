@@ -1,3 +1,4 @@
+using ClaudeCodeMAUI.Extensions;
 using ClaudeCodeMAUI.Models;
 using ClaudeCodeMAUI.Services;
 using Serilog;
@@ -92,7 +93,7 @@ namespace ClaudeCodeMAUI.Views
                 if (_sessionScanner == null)
                 {
                     Log.Error("SessionScanner is null!");
-                    await DisplayAlert("Error", "SessionScanner is null - cannot load sessions", "OK");
+                    await this.DisplaySelectableAlert("Error", "SessionScanner is null - cannot load sessions", "OK");
                     return;
                 }
 
@@ -149,7 +150,7 @@ namespace ClaudeCodeMAUI.Views
             catch (Exception ex)
             {
                 Log.Error(ex, "Failed to load sessions");
-                await DisplayAlert("Errore", $"Impossibile caricare le sessioni:\n{ex.Message}", "OK");
+                await this.DisplaySelectableAlert("Errore", $"Impossibile caricare le sessioni:\n{ex.Message}", "OK");
             }
         }
 
@@ -329,7 +330,7 @@ namespace ClaudeCodeMAUI.Views
                     if (!File.Exists(filePath))
                     {
                         Log.Warning("File not found: {FilePath}", filePath);
-                        await DisplayAlert("File non trovato", $"Il file non esiste:\n{filePath}", "OK");
+                        await this.DisplaySelectableAlert("File non trovato", $"Il file non esiste:\n{filePath}", "OK");
                         return;
                     }
 
@@ -345,7 +346,7 @@ namespace ClaudeCodeMAUI.Views
                     if (!File.Exists(notepadPath))
                     {
                         Log.Warning("Notepad++ not found");
-                        await DisplayAlert("Notepad++ non trovato",
+                        await this.DisplaySelectableAlert("Notepad++ non trovato",
                             "Notepad++ non è installato o non è stato trovato nel percorso predefinito.",
                             "OK");
                         return;
@@ -365,7 +366,7 @@ namespace ClaudeCodeMAUI.Views
                 catch (Exception ex)
                 {
                     Log.Error(ex, "Failed to open file with Notepad++");
-                    await DisplayAlert("Errore", $"Impossibile aprire il file:\n{ex.Message}", "OK");
+                    await this.DisplaySelectableAlert("Errore", $"Impossibile aprire il file:\n{ex.Message}", "OK");
                 }
             }
         }
@@ -405,7 +406,7 @@ namespace ClaudeCodeMAUI.Views
             if (_selectedSessionItem == null)
             {
                 Log.Warning("No session selected");
-                await DisplayAlert("Nessuna selezione", "Seleziona prima una sessione dalla lista.", "OK");
+                await this.DisplaySelectableAlert("Nessuna selezione", "Seleziona prima una sessione dalla lista.", "OK");
                 return;
             }
 
@@ -418,7 +419,7 @@ namespace ClaudeCodeMAUI.Views
                 if (!File.Exists(filePath))
                 {
                     Log.Warning("File does not exist: {FilePath}", filePath);
-                    await DisplayAlert("File non trovato", $"Il file non esiste:\n{filePath}", "OK");
+                    await this.DisplaySelectableAlert("File non trovato", $"Il file non esiste:\n{filePath}", "OK");
                     return;
                 }
 
@@ -433,7 +434,7 @@ namespace ClaudeCodeMAUI.Views
                 if (!File.Exists(notepadPath))
                 {
                     Log.Warning("Notepad++ not found in standard locations");
-                    await DisplayAlert("Notepad++ non trovato", "Notepad++ non è installato nel percorso standard.", "OK");
+                    await this.DisplaySelectableAlert("Notepad++ non trovato", "Notepad++ non è installato nel percorso standard.", "OK");
                     return;
                 }
 
@@ -452,7 +453,7 @@ namespace ClaudeCodeMAUI.Views
             catch (Exception ex)
             {
                 Log.Error(ex, "Failed to open file with Notepad++");
-                await DisplayAlert("Errore", $"Impossibile aprire il file:\n{ex.Message}", "OK");
+                await this.DisplaySelectableAlert("Errore", $"Impossibile aprire il file:\n{ex.Message}", "OK");
             }
         }
 
@@ -485,7 +486,7 @@ namespace ClaudeCodeMAUI.Views
             catch (Exception ex)
             {
                 Log.Error(ex, "Failed to show new session dialog");
-                await DisplayAlert("Errore", $"Impossibile aprire il dialog per nuova sessione:\n{ex.Message}", "OK");
+                await this.DisplaySelectableAlert("Errore", $"Impossibile aprire il dialog per nuova sessione:\n{ex.Message}", "OK");
             }
         }
 
@@ -515,7 +516,7 @@ namespace ClaudeCodeMAUI.Views
             catch (Exception ex)
             {
                 Log.Error(ex, "Failed to show assign name dialog");
-                await DisplayAlert("Errore", $"Impossibile assegnare il nome:\n{ex.Message}", "OK");
+                await this.DisplaySelectableAlert("Errore", $"Impossibile assegnare il nome:\n{ex.Message}", "OK");
             }
         }
 
@@ -554,7 +555,7 @@ namespace ClaudeCodeMAUI.Views
             try
             {
                 // Chiedi conferma all'utente
-                bool confirmed = await DisplayAlert(
+                bool confirmed = await this.DisplaySelectableAlert(
                     "Conferma Riscansione",
                     "Questa operazione rieseguirà la scansione completa del filesystem.\n" +
                     "I nomi assegnati alle sessioni verranno preservati.\n\n" +
@@ -582,14 +583,14 @@ namespace ClaudeCodeMAUI.Views
 
                 Log.Information("Full rescan completed successfully");
 
-                await DisplayAlert("Riscansione Completata",
+                await this.DisplaySelectableAlert("Riscansione Completata",
                     "La scansione del filesystem è stata completata con successo.",
                     "OK");
             }
             catch (Exception ex)
             {
                 Log.Error(ex, "Failed to rescan filesystem");
-                await DisplayAlert("Errore", $"Impossibile completare la riscansione:\n{ex.Message}", "OK");
+                await this.DisplaySelectableAlert("Errore", $"Impossibile completare la riscansione:\n{ex.Message}", "OK");
             }
         }
 
@@ -608,7 +609,7 @@ namespace ClaudeCodeMAUI.Views
                     // Valida il nome
                     if (string.IsNullOrWhiteSpace(newName))
                     {
-                        await DisplayAlert("Nome Invalido", "Il nome non può essere vuoto.", "OK");
+                        await this.DisplaySelectableAlert("Nome Invalido", "Il nome non può essere vuoto.", "OK");
                         entry.Text = item.DisplayName; // Ripristina il valore originale
                         return;
                     }
@@ -634,7 +635,7 @@ namespace ClaudeCodeMAUI.Views
             catch (Exception ex)
             {
                 Log.Error(ex, "Failed to update session name inline");
-                await DisplayAlert("Errore", $"Impossibile aggiornare il nome:\n{ex.Message}", "OK");
+                await this.DisplaySelectableAlert("Errore", $"Impossibile aggiornare il nome:\n{ex.Message}", "OK");
             }
         }
 
@@ -656,7 +657,7 @@ namespace ClaudeCodeMAUI.Views
 
                     if (!File.Exists(filePath))
                     {
-                        await DisplayAlert("File non trovato", $"Il file non esiste:\n{filePath}", "OK");
+                        await this.DisplaySelectableAlert("File non trovato", $"Il file non esiste:\n{filePath}", "OK");
                         return;
                     }
 
@@ -731,7 +732,7 @@ namespace ClaudeCodeMAUI.Views
                         if (uniqueFields.Count > 5)
                             fieldsPreview += $" ... (+{uniqueFields.Count - 5} altri)";
 
-                        await DisplayAlert("Import Completato con Warning",
+                        await this.DisplaySelectableAlert("Import Completato con Warning",
                             $"✅ Importati: {result.ImportedCount} messaggi\n" +
                             $"⚠️ Saltati: {result.SkippedCount} messaggi con campi sconosciuti\n" +
                             $"📊 Totale: {result.TotalProcessed} messaggi processati\n\n" +
@@ -743,7 +744,7 @@ namespace ClaudeCodeMAUI.Views
                     }
                     else
                     {
-                        await DisplayAlert("Import Completato",
+                        await this.DisplaySelectableAlert("Import Completato",
                             $"✅ Importati con successo {result.ImportedCount} messaggi nel database.\n" +
                             $"📊 Totale processato: {result.TotalProcessed} messaggi",
                             "OK");
@@ -764,7 +765,7 @@ namespace ClaudeCodeMAUI.Views
                     await Navigation.PopModalAsync();
                 }
 
-                await DisplayAlert("Errore", $"Impossibile aggiornare i messaggi:\n{ex.Message}", "OK");
+                await this.DisplaySelectableAlert("Errore", $"Impossibile aggiornare i messaggi:\n{ex.Message}", "OK");
             }
         }
 

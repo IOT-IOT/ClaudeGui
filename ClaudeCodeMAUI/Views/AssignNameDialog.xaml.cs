@@ -1,3 +1,4 @@
+using ClaudeCodeMAUI.Extensions;
 using ClaudeCodeMAUI.Services;
 using Serilog;
 
@@ -66,7 +67,7 @@ namespace ClaudeCodeMAUI.Views
                 // Validazione: nome obbligatorio
                 if (string.IsNullOrWhiteSpace(name))
                 {
-                    await DisplayAlert("Errore", "Devi inserire un nome per la sessione.", "OK");
+                    await this.DisplaySelectableAlert("Errore", "Devi inserire un nome per la sessione.", "OK");
                     return;
                 }
 
@@ -78,7 +79,7 @@ namespace ClaudeCodeMAUI.Views
                 Log.Information("Session name updated successfully");
 
                 // Notifica successo all'utente
-                await DisplayAlert("Successo", $"Il nome '{name}' è stato assegnato alla sessione.", "OK");
+                await this.DisplaySelectableAlert("Successo", $"Il nome '{name}' è stato assegnato alla sessione.", "OK");
 
                 // Imposta i valori di ritorno
                 WasNameAssigned = true;
@@ -90,7 +91,7 @@ namespace ClaudeCodeMAUI.Views
             catch (Exception ex)
             {
                 Log.Error(ex, "Failed to assign name to session: {SessionId}", _sessionId);
-                await DisplayAlert("Errore", $"Impossibile assegnare il nome:\n{ex.Message}", "OK");
+                await this.DisplaySelectableAlert("Errore", $"Impossibile assegnare il nome:\n{ex.Message}", "OK");
             }
         }
 

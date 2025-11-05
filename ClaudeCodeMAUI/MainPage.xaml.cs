@@ -1,3 +1,4 @@
+using ClaudeCodeMAUI.Extensions;
 using ClaudeCodeMAUI.Services;
 using ClaudeCodeMAUI.Models;
 using ClaudeCodeMAUI.Utilities;
@@ -143,7 +144,7 @@ public partial class MainPage : ContentPage
         catch (Exception ex)
         {
             Log.Error(ex, "Failed to load open sessions on startup");
-            await DisplayAlert("Error", $"Failed to restore sessions:\n{ex.Message}", "OK");
+            await this.DisplaySelectableAlert("Error", $"Failed to restore sessions:\n{ex.Message}", "OK");
         }
     }
 
@@ -312,7 +313,7 @@ public partial class MainPage : ContentPage
         catch (Exception ex)
         {
             Log.Error(ex, "Failed to open session in new tab: {SessionId}", sessionDbRow.SessionId);
-            await DisplayAlert("Error", $"Failed to open session:\n{ex.Message}", "OK");
+            await this.DisplaySelectableAlert("Error", $"Failed to open session:\n{ex.Message}", "OK");
         }
     }
 
@@ -442,7 +443,7 @@ public partial class MainPage : ContentPage
         catch (Exception ex)
         {
             Log.Error(ex, "Failed to open session in new tab");
-            await DisplayAlert("Error", $"Failed to open session:\n{ex.Message}", "OK");
+            await this.DisplaySelectableAlert("Error", $"Failed to open session:\n{ex.Message}", "OK");
         }
     }
 
@@ -470,7 +471,7 @@ public partial class MainPage : ContentPage
         catch (Exception ex)
         {
             Log.Error(ex, "Failed to close tab via button");
-            await DisplayAlert("Errore", $"Impossibile chiudere il tab:\n{ex.Message}", "OK");
+            await this.DisplaySelectableAlert("Errore", $"Impossibile chiudere il tab:\n{ex.Message}", "OK");
         }
     }
 
@@ -536,7 +537,7 @@ public partial class MainPage : ContentPage
         {
             if (_sessionScanner == null || _dbService == null)
             {
-                var result = await DisplayAlert(
+                var result = await this.DisplaySelectableAlert(
                     "Database Not Connected",
                     "Cannot load existing sessions because database credentials are not configured.\n\n" +
                     "To configure:\n" +
@@ -583,7 +584,7 @@ public partial class MainPage : ContentPage
 
                 if (!isNewSession && string.IsNullOrWhiteSpace(selected.Name))
                 {
-                    await DisplayAlert("Nome Mancante",
+                    await this.DisplaySelectableAlert("Nome Mancante",
                         "Questa sessione non ha un nome assegnato.\n\n" +
                         "Assegna un nome prima di aprirla utilizzando il pulsante 'Assegna Nome' " +
                         "o modificando direttamente il campo nella tabella.",
@@ -608,7 +609,7 @@ public partial class MainPage : ContentPage
         catch (Exception ex)
         {
             Log.Error(ex, "Failed to handle session selection");
-            await DisplayAlert("Error", $"Failed to open session:\n{ex.Message}", "OK");
+            await this.DisplaySelectableAlert("Error", $"Failed to open session:\n{ex.Message}", "OK");
         }
     }
 
@@ -622,7 +623,7 @@ public partial class MainPage : ContentPage
         {
             if (_currentTab == null || _currentTab.ProcessManager == null)
             {
-                await DisplayAlert("Error", "No active session", "OK");
+                await this.DisplaySelectableAlert("Error", "No active session", "OK");
                 return;
             }
 
@@ -660,7 +661,7 @@ public partial class MainPage : ContentPage
         catch (Exception ex)
         {
             Log.Error(ex, "Failed to restart process");
-            await DisplayAlert("Error", $"Failed to restart:\n{ex.Message}", "OK");
+            await this.DisplaySelectableAlert("Error", $"Failed to restart:\n{ex.Message}", "OK");
         }
     }
 
@@ -715,7 +716,7 @@ public partial class MainPage : ContentPage
 
             if (_currentTab == null || _currentTab.ProcessManager == null)
             {
-                await DisplayAlert("Error", "No active session. Select or create a session first.", "OK");
+                await this.DisplaySelectableAlert("Error", "No active session. Select or create a session first.", "OK");
                 return;
             }
 
@@ -743,7 +744,7 @@ public partial class MainPage : ContentPage
         catch (Exception ex)
         {
             Log.Error(ex, "Failed to send message");
-            await DisplayAlert("Error", $"Failed to send message:\n{ex.Message}", "OK");
+            await this.DisplaySelectableAlert("Error", $"Failed to send message:\n{ex.Message}", "OK");
         }
     }
 
@@ -760,7 +761,7 @@ public partial class MainPage : ContentPage
 
             Log.Information("Exit command received for session: {SessionId}", _currentTab.SessionId);
 
-            var confirm = await DisplayAlert(
+            var confirm = await this.DisplaySelectableAlert(
                 "Confirm Exit",
                 $"Close session '{_currentTab.TabTitle}'?\n\nThis will set the session status to 'closed' and remove the tab.",
                 "Yes, Exit",
@@ -785,7 +786,7 @@ public partial class MainPage : ContentPage
         catch (Exception ex)
         {
             Log.Error(ex, "Failed to handle exit command");
-            await DisplayAlert("Error", $"Failed to exit session:\n{ex.Message}", "OK");
+            await this.DisplaySelectableAlert("Error", $"Failed to exit session:\n{ex.Message}", "OK");
         }
     }
 
@@ -818,7 +819,7 @@ public partial class MainPage : ContentPage
     private async void OnContextInfoClicked(object? sender, EventArgs e)
     {
         // TODO: Implementare context info per tab corrente
-        await DisplayAlert("Context Info", "Feature coming soon", "OK");
+        await this.DisplaySelectableAlert("Context Info", "Feature coming soon", "OK");
     }
 
     private async void OnViewSessionClicked(object? sender, EventArgs e)
@@ -827,7 +828,7 @@ public partial class MainPage : ContentPage
         {
             if (_currentTab == null)
             {
-                await DisplayAlert("No Session", "No active session to view", "OK");
+                await this.DisplaySelectableAlert("No Session", "No active session to view", "OK");
                 return;
             }
 
@@ -837,14 +838,14 @@ public partial class MainPage : ContentPage
         catch (Exception ex)
         {
             Log.Error(ex, "Failed to open session viewer");
-            await DisplayAlert("Error", $"Failed to open viewer:\n{ex.Message}", "OK");
+            await this.DisplaySelectableAlert("Error", $"Failed to open viewer:\n{ex.Message}", "OK");
         }
     }
 
     private async void OnTerminalClicked(object? sender, EventArgs e)
     {
         // TODO: Implementare apertura terminale per tab corrente
-        await DisplayAlert("Terminal", "Feature coming soon", "OK");
+        await this.DisplaySelectableAlert("Terminal", "Feature coming soon", "OK");
     }
 
     private async void OnSettingsClicked(object? sender, EventArgs e)
@@ -853,7 +854,7 @@ public partial class MainPage : ContentPage
         {
             if (_settingsService == null)
             {
-                await DisplayAlert("Error", "Settings service not available", "OK");
+                await this.DisplaySelectableAlert("Error", "Settings service not available", "OK");
                 return;
             }
 
@@ -863,7 +864,7 @@ public partial class MainPage : ContentPage
         catch (Exception ex)
         {
             Log.Error(ex, "Failed to open settings");
-            await DisplayAlert("Error", "Failed to open settings", "OK");
+            await this.DisplaySelectableAlert("Error", "Failed to open settings", "OK");
         }
     }
 

@@ -1,3 +1,4 @@
+using ClaudeCodeMAUI.Extensions;
 using ClaudeCodeMAUI.Models;
 using Serilog;
 
@@ -87,7 +88,7 @@ public partial class ContextInfoPage : ContentPage
         {
             if (_contextInfo == null || string.IsNullOrWhiteSpace(_contextInfo.RawOutput))
             {
-                await DisplayAlert("Error", "No raw output available to copy.", "OK");
+                await this.DisplaySelectableAlert("Error", "No raw output available to copy.", "OK");
                 return;
             }
 
@@ -109,7 +110,7 @@ public partial class ContextInfoPage : ContentPage
         catch (Exception ex)
         {
             Log.Error(ex, "Failed to copy raw output to clipboard");
-            await DisplayAlert("Error", $"Failed to copy to clipboard: {ex.Message}", "OK");
+            await this.DisplaySelectableAlert("Error", $"Failed to copy to clipboard: {ex.Message}", "OK");
         }
     }
 
@@ -127,7 +128,7 @@ public partial class ContextInfoPage : ContentPage
         catch (Exception ex)
         {
             Log.Error(ex, "Failed to close ContextInfoPage");
-            await DisplayAlert("Error", $"Failed to close page: {ex.Message}", "OK");
+            await this.DisplaySelectableAlert("Error", $"Failed to close page: {ex.Message}", "OK");
         }
     }
 }

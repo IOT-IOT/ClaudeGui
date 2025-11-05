@@ -1,3 +1,4 @@
+using ClaudeCodeMAUI.Extensions;
 using ClaudeCodeMAUI.Models;
 using ClaudeCodeMAUI.Services;
 using ClaudeCodeMAUI.Utilities;
@@ -66,7 +67,7 @@ namespace ClaudeCodeMAUI.Views
 
                 if (_timeline.Count == 0)
                 {
-                    DisplayAlert("No Messages", "The session file is empty or could not be parsed.", "OK");
+                    _ = this.DisplaySelectableAlert("No Messages", "The session file is empty or could not be parsed.", "OK");
                     return;
                 }
 
@@ -81,7 +82,7 @@ namespace ClaudeCodeMAUI.Views
             catch (Exception ex)
             {
                 Log.Error(ex, "Failed to load session timeline");
-                DisplayAlert("Error", $"Failed to load session timeline:\n\n{ex.Message}", "OK");
+                _ = this.DisplaySelectableAlert("Error", $"Failed to load session timeline:\n\n{ex.Message}", "OK");
             }
         }
 
@@ -108,7 +109,7 @@ namespace ClaudeCodeMAUI.Views
 
                 if (_timeline.Count == 0)
                 {
-                    DisplayAlert("No Messages", "No sessions found.", "OK");
+                    _ = this.DisplaySelectableAlert("No Messages", "No sessions found.", "OK");
                     return;
                 }
 
@@ -124,7 +125,7 @@ namespace ClaudeCodeMAUI.Views
             catch (Exception ex)
             {
                 Log.Error(ex, "Failed to load all sessions");
-                DisplayAlert("Error", $"Failed to load sessions:\n\n{ex.Message}", "OK");
+                _ = this.DisplaySelectableAlert("Error", $"Failed to load sessions:\n\n{ex.Message}", "OK");
             }
         }
 
@@ -244,7 +245,7 @@ namespace ClaudeCodeMAUI.Views
             catch (Exception ex)
             {
                 Log.Error(ex, "Failed to display message at index {Index}", _currentIndex);
-                DisplayAlert("Error", $"Failed to display message:\n\n{ex.Message}", "OK");
+                _ = this.DisplaySelectableAlert("Error", $"Failed to display message:\n\n{ex.Message}", "OK");
             }
         }
 
@@ -377,7 +378,7 @@ namespace ClaudeCodeMAUI.Views
             {
                 // Nessun risultato con i filtri correnti
                 JsonEditor.Text = "No messages match current filters";
-                DisplayAlert("No Results", "No messages match the current filter combination.", "OK");
+                _ = this.DisplaySelectableAlert("No Results", "No messages match the current filter combination.", "OK");
             }
         }
 
@@ -424,7 +425,7 @@ namespace ClaudeCodeMAUI.Views
             {
                 // Nessun risultato con i filtri correnti
                 JsonEditor.Text = "No messages match current filters";
-                DisplayAlert("No Results", "No messages match the current filter combination.", "OK");
+                _ = this.DisplaySelectableAlert("No Results", "No messages match the current filter combination.", "OK");
             }
         }
 
@@ -482,7 +483,7 @@ namespace ClaudeCodeMAUI.Views
             {
                 // Nessun risultato con i filtri correnti
                 JsonEditor.Text = "No messages match current filters";
-                DisplayAlert("No Results", "No messages match the current filter combination.", "OK");
+                _ = this.DisplaySelectableAlert("No Results", "No messages match the current filter combination.", "OK");
             }
         }
 

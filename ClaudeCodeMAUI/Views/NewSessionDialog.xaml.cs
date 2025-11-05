@@ -1,3 +1,4 @@
+using ClaudeCodeMAUI.Extensions;
 using ClaudeCodeMAUI.Models;
 using Serilog;
 
@@ -62,7 +63,7 @@ namespace ClaudeCodeMAUI.Views
             catch (Exception ex)
             {
                 Log.Error(ex, "Failed to open folder picker");
-                await DisplayAlert("Errore", $"Impossibile aprire il selettore di cartelle:\n{ex.Message}", "OK");
+                await this.DisplaySelectableAlert("Errore", $"Impossibile aprire il selettore di cartelle:\n{ex.Message}", "OK");
             }
         }
 
@@ -89,14 +90,14 @@ namespace ClaudeCodeMAUI.Views
                 // Validazione: working directory obbligatoria
                 if (string.IsNullOrWhiteSpace(workingDirectory))
                 {
-                    await DisplayAlert("Errore", "Devi selezionare una working directory per la nuova sessione.", "OK");
+                    await this.DisplaySelectableAlert("Errore", "Devi selezionare una working directory per la nuova sessione.", "OK");
                     return;
                 }
 
                 // Validazione: verifica che la directory esista
                 if (!Directory.Exists(workingDirectory))
                 {
-                    var createIt = await DisplayAlert(
+                    var createIt = await this.DisplaySelectableAlert(
                         "Directory non trovata",
                         $"La directory '{workingDirectory}' non esiste.\n\nVuoi crearla?",
                         "Sì, crea",
@@ -112,7 +113,7 @@ namespace ClaudeCodeMAUI.Views
                         catch (Exception ex)
                         {
                             Log.Error(ex, "Failed to create working directory: {Path}", workingDirectory);
-                            await DisplayAlert("Errore", $"Impossibile creare la directory:\n{ex.Message}", "OK");
+                            await this.DisplaySelectableAlert("Errore", $"Impossibile creare la directory:\n{ex.Message}", "OK");
                             return;
                         }
                     }
@@ -151,7 +152,7 @@ namespace ClaudeCodeMAUI.Views
             catch (Exception ex)
             {
                 Log.Error(ex, "Failed to create new session");
-                await DisplayAlert("Errore", $"Impossibile creare la sessione:\n{ex.Message}", "OK");
+                await this.DisplaySelectableAlert("Errore", $"Impossibile creare la sessione:\n{ex.Message}", "OK");
             }
         }
 

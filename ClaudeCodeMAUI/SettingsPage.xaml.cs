@@ -1,3 +1,4 @@
+using ClaudeCodeMAUI.Extensions;
 using ClaudeCodeMAUI.Services;
 using Serilog;
 
@@ -154,7 +155,7 @@ public partial class SettingsPage : ContentPage
     private async void OnResetToDefaults(object sender, EventArgs e)
     {
         // Chiedi conferma all'utente
-        bool confirm = await DisplayAlert(
+        bool confirm = await this.DisplaySelectableAlert(
             "Ripristina impostazioni",
             "Sei sicuro di voler ripristinare tutte le impostazioni ai valori predefiniti?",
             "Sì",
@@ -166,7 +167,7 @@ public partial class SettingsPage : ContentPage
             LoadCurrentSettings();
             _onSettingsChanged?.Invoke();
 
-            await DisplayAlert("Successo", "Le impostazioni sono state ripristinate ai valori predefiniti.", "OK");
+            await this.DisplaySelectableAlert("Successo", "Le impostazioni sono state ripristinate ai valori predefiniti.", "OK");
             Log.Information("SettingsPage: Impostazioni resettate ai valori di default");
         }
     }

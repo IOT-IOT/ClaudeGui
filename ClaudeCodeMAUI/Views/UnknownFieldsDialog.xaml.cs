@@ -1,3 +1,4 @@
+using ClaudeCodeMAUI.Extensions;
 using Microsoft.Maui.ApplicationModel.DataTransfer;
 using Serilog;
 using System.Diagnostics;
@@ -130,7 +131,7 @@ public partial class UnknownFieldsDialog : ContentPage
     private async void OnCopyJsonClicked(object sender, EventArgs e)
     {
         await Clipboard.SetTextAsync(_jsonLine);
-        await DisplayAlert("Copiato", "JSON copiato negli appunti", "OK");
+        await this.DisplaySelectableAlert("Copiato", "JSON copiato negli appunti", "OK");
     }
 
     private async void OnContinueClicked(object sender, EventArgs e)
@@ -208,7 +209,7 @@ public partial class UnknownFieldsDialog : ContentPage
                     }
                     else
                     {
-                        await DisplayAlert("VS Code Non Trovato",
+                        await this.DisplaySelectableAlert("VS Code Non Trovato",
                             "VS Code non è installato o non è stato trovato nel percorso predefinito.\n" +
                             "Percorso cercato: " + vscodePath,
                             "OK");
@@ -234,7 +235,7 @@ public partial class UnknownFieldsDialog : ContentPage
                     }
                     else
                     {
-                        await DisplayAlert("Notepad++ Non Trovato",
+                        await this.DisplaySelectableAlert("Notepad++ Non Trovato",
                             "Notepad++ non è installato o non è stato trovato nel percorso predefinito.",
                             "OK");
                     }
@@ -256,7 +257,7 @@ public partial class UnknownFieldsDialog : ContentPage
         catch (Exception ex)
         {
             Log.Error(ex, "Failed to open JSON with external editor");
-            await DisplayAlert("Errore", $"Impossibile aprire l'editor:\n{ex.Message}", "OK");
+            await this.DisplaySelectableAlert("Errore", $"Impossibile aprire l'editor:\n{ex.Message}", "OK");
         }
     }
 
