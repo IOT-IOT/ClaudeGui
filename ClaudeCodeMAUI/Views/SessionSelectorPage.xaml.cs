@@ -667,6 +667,10 @@ namespace ClaudeCodeMAUI.Views
                     progressDialog = new ProgressDialog();
                     await Navigation.PushModalAsync(progressDialog);
 
+                    // Crea un CancellationTokenSource separato per l'import
+                    // (non usiamo progressDialog.CancellationToken perché viene cancellato quando apriamo dialog modali sopra)
+                    using var importCts = new CancellationTokenSource();
+
                     // Crea il progress callback
                     var progress = new Progress<(int current, int total)>(update =>
                     {
@@ -680,17 +684,26 @@ namespace ClaudeCodeMAUI.Views
                     // Crea il callback per gestire unknown fields
                     Func<string, string, List<string>, Task<bool>> unknownFieldsCallback = async (jsonLine, uuid, unknownFields) =>
                     {
-                        // Mostra UnknownFieldsDialog completo con syntax highlighting
-                        var dialog = new UnknownFieldsDialog(jsonLine, unknownFields, uuid);
-                        await Navigation.PushModalAsync(new NavigationPage(dialog));
-
-                        // Aspetta che il dialog venga chiuso
-                        while (Navigation.ModalStack.Count > 0)
+                        try
                         {
-                            await Task.Delay(100);
-                        }
+                            // Mostra UnknownFieldsDialog completo con syntax highlighting
+                            var dialog = new UnknownFieldsDialog(jsonLine, unknownFields, uuid);
+                            await Navigation.PushModalAsync(new NavigationPage(dialog));
 
-                        return dialog.ShouldContinue;
+                            // Aspetta che l'utente prenda una decisione (TaskCompletionSource)
+                            var result = await dialog.Result;
+
+                            // Chiudi il dialog DOPO aver ricevuto il risultato
+                            await Navigation.PopModalAsync();
+
+                            return result;
+                        }
+                        catch (Exception ex)
+                        {
+                            Log.Error(ex, "Error handling unknown fields dialog");
+                            // In caso di errore, interrompi l'import per sicurezza
+                            return false;
+                        }
                     };
 
                     // Esegui l'import con progress e cancellation support
@@ -704,7 +717,7 @@ namespace ClaudeCodeMAUI.Views
                             filePath,
                             progress,
                             unknownFieldsCallback,
-                            progressDialog.CancellationToken);
+                            importCts.Token);
 
                         // Segna come completato
                         progressDialog.Complete();

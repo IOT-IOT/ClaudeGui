@@ -957,13 +957,13 @@ public partial class MainPage : ContentPage
                         var dialog = new Views.UnknownFieldsDialog(jsonLine, unknownFields, uuid);
                         await Navigation.PushModalAsync(new NavigationPage(dialog));
 
-                        // Aspetta che il dialog venga chiuso
-                        while (Navigation.ModalStack.Count > 0)
-                        {
-                            await Task.Delay(100);
-                        }
+                        // Aspetta che l'utente prenda una decisione (TaskCompletionSource)
+                        var result = await dialog.Result;
 
-                        return dialog.ShouldContinue;
+                        // Chiudi il dialog DOPO aver ricevuto il risultato
+                        await Navigation.PopModalAsync();
+
+                        return result;
                     });
 
                     if (!shouldContinue)

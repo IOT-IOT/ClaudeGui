@@ -15,11 +15,18 @@ public partial class UnknownFieldsDialog : ContentPage
 {
     private readonly string _jsonLine;
     private string? _tempFilePath;
+    private readonly TaskCompletionSource<bool> _completionSource = new();
 
     /// <summary>
     /// Indica se l'utente ha scelto di continuare la scansione (true) o interromperla (false)
     /// </summary>
     public bool ShouldContinue { get; private set; }
+
+    /// <summary>
+    /// Task che completa quando l'utente chiude il dialog.
+    /// Ritorna true se l'utente ha scelto di continuare, false se ha interrotto.
+    /// </summary>
+    public Task<bool> Result => _completionSource.Task;
 
     public UnknownFieldsDialog(string jsonLine, List<string> unknownFields, string uuid)
     {
@@ -137,18 +144,20 @@ public partial class UnknownFieldsDialog : ContentPage
         ToastService.Instance.ShowSuccess("JSON copiato negli appunti");
     }
 
-    private async void OnContinueClicked(object sender, EventArgs e)
+    private void OnContinueClicked(object sender, EventArgs e)
     {
         ShouldContinue = true;
         CleanupTempFile();
-        await Navigation.PopModalAsync();
+        _completionSource.TrySetResult(true);
+        // Il chiamante chiuderà il dialog dopo aver ricevuto il risultato
     }
 
-    private async void OnStopClicked(object sender, EventArgs e)
+    private void OnStopClicked(object sender, EventArgs e)
     {
         ShouldContinue = false;
         CleanupTempFile();
-        await Navigation.PopModalAsync();
+        _completionSource.TrySetResult(false);
+        // Il chiamante chiuderà il dialog dopo aver ricevuto il risultato
     }
 
     private void OnJsonTapped(object sender, EventArgs e)
