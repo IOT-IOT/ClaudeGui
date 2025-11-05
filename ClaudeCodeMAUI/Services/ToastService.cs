@@ -135,40 +135,75 @@ public class ToastService
     {
         try
         {
-            // 1. Verifica se c'è un dialog modale aperto
-            var currentPage = Application.Current?.MainPage?.Navigation?.ModalStack?.LastOrDefault();
+            System.Diagnostics.Debug.WriteLine("=== ToastService: Inizio ricerca container ===");
 
-            // 2. Se non ci sono modal, usa la pagina corrente
-            if (currentPage == null)
+            // 1. Prova con Window corrente (raccomandato per .NET 9)
+            var window = Application.Current?.Windows?.FirstOrDefault();
+            if (window != null)
             {
-                var shell = Application.Current?.MainPage as Shell;
-                currentPage = shell?.CurrentPage;
-            }
+                System.Diagnostics.Debug.WriteLine($"ToastService: Window trovata: {window.GetType().Name}");
 
-            // 3. Cerca un ToastContainer nella pagina corrente
-            if (currentPage != null)
-            {
-                var container = FindToastContainerInView(currentPage);
-                if (container != null)
+                // Verifica se ci sono dialog modali
+                var modalStack = window.Page?.Navigation?.ModalStack;
+                if (modalStack != null && modalStack.Count > 0)
                 {
-                    System.Diagnostics.Debug.WriteLine($"ToastService: Trovato container nella pagina corrente: {currentPage.GetType().Name}");
-                    return container;
+                    var modalPage = modalStack.LastOrDefault();
+                    System.Diagnostics.Debug.WriteLine($"ToastService: Modal stack contiene {modalStack.Count} pagine, ultima: {modalPage?.GetType().Name}");
+
+                    if (modalPage != null)
+                    {
+                        var container = FindToastContainerInView(modalPage);
+                        if (container != null)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"ToastService: ✓ Trovato container nella pagina modale: {modalPage.GetType().Name}");
+                            return container;
+                        }
+                        else
+                        {
+                            System.Diagnostics.Debug.WriteLine($"ToastService: ✗ Container NON trovato nella pagina modale: {modalPage.GetType().Name}");
+                        }
+                    }
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine("ToastService: Nessun dialog modale aperto");
+                }
+
+                // Se non ci sono modal o non hanno container, usa la pagina principale
+                if (window.Page is Shell shell)
+                {
+                    var currentPage = shell.CurrentPage;
+                    System.Diagnostics.Debug.WriteLine($"ToastService: Shell.CurrentPage: {currentPage?.GetType().Name}");
+
+                    if (currentPage != null)
+                    {
+                        var container = FindToastContainerInView(currentPage);
+                        if (container != null)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"ToastService: ✓ Trovato container in Shell.CurrentPage");
+                            return container;
+                        }
+                    }
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"ToastService: Window.Page non è Shell: {window.Page?.GetType().Name}");
                 }
             }
 
-            // 4. Fallback: usa il container inizializzato (MainPage)
+            // Fallback: usa il container inizializzato
             if (_toastContainer != null)
             {
-                System.Diagnostics.Debug.WriteLine("ToastService: Uso container inizializzato (MainPage)");
+                System.Diagnostics.Debug.WriteLine("ToastService: ✓ Uso container inizializzato (fallback)");
                 return _toastContainer;
             }
 
-            System.Diagnostics.Debug.WriteLine("ToastService: Nessun container trovato");
+            System.Diagnostics.Debug.WriteLine("ToastService: ✗ Nessun container trovato!");
             return null;
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"ToastService: Errore nel trovare container: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"ToastService: ✗ ERRORE: {ex.Message}\n{ex.StackTrace}");
             return _toastContainer; // Fallback
         }
     }
@@ -178,13 +213,19 @@ public class ToastService
     /// </summary>
     private VerticalStackLayout? FindToastContainerInView(Element view)
     {
+        System.Diagnostics.Debug.WriteLine($"  - Analizzando: {view.GetType().Name} (StyleId: {view.StyleId})");
+
         // Cerca un VerticalStackLayout con StyleId="ToastContainer"
         if (view is VerticalStackLayout vsl && vsl.StyleId == "ToastContainer")
+        {
+            System.Diagnostics.Debug.WriteLine($"  ✓ TROVATO ToastContainer!");
             return vsl;
+        }
 
         // Cerca nei figli se è un Layout
         if (view is Layout layout)
         {
+            System.Diagnostics.Debug.WriteLine($"  → È un Layout con {layout.Children.Count} figli");
             foreach (var child in layout.Children)
             {
                 if (child is Element element)
@@ -198,12 +239,14 @@ public class ToastService
         // Cerca nel Content se è una ContentPage
         if (view is ContentPage page && page.Content != null)
         {
+            System.Diagnostics.Debug.WriteLine($"  → ContentPage, cerco nel Content");
             return FindToastContainerInView(page.Content);
         }
 
         // Cerca nel Content se è un ScrollView
         if (view is ScrollView scrollView && scrollView.Content != null)
         {
+            System.Diagnostics.Debug.WriteLine($"  → ScrollView, cerco nel Content");
             return FindToastContainerInView(scrollView.Content);
         }
 
