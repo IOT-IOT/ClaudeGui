@@ -146,16 +146,6 @@ public partial class MainPage : ContentPage
             Log.Error(ex, "Failed to load open sessions on startup");
             await this.DisplaySelectableAlert("Error", $"Failed to restore sessions:\n{ex.Message}", "OK");
         }
-        finally
-        {
-            // TEST: Mostra dialog di test per DisplaySelectableAlert
-            // Viene mostrato nel finally per assicurarsi che appaia sempre
-            await Task.Delay(500); // Piccolo delay per assicurare che la UI sia pronta
-            await this.DisplaySelectableAlert(
-                "Test DisplaySelectableAlert",
-                "Questo è un messaggio di test.\n\nProva a selezionare questo testo con il mouse e copiarlo.\n\nSe riesci a selezionare e copiare il testo, DisplaySelectableAlert funziona correttamente! ✓\n\nRiga 1\nRiga 2\nRiga 3",
-                "OK");
-        }
     }
 
     #endregion
