@@ -19,7 +19,7 @@ public partial class SelectableAlertDialog : ContentPage
         InitializeComponent();
 
         TitleLabel.Text = title;
-        MessageLabel.Text = message;
+        MessageEditor.Text = message;
 
         // Aggiungi pulsanti dinamicamente
         if (buttons == null || buttons.Length == 0)

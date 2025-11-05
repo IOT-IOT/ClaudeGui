@@ -23,13 +23,14 @@
                        HorizontalTextAlignment="Center" />
 
                 <!-- Messaggio selezionabile -->
-                <ScrollView MaximumHeightRequest="300">
-                    <Label x:Name="MessageLabel"
-                           FontSize="14"
-                           TextColor="White"
-                           LineBreakMode="WordWrap"
-                           FontFamily="Consolas" />
-                </ScrollView>
+                <Editor x:Name="MessageEditor"
+                        FontSize="14"
+                        TextColor="White"
+                        BackgroundColor="Transparent"
+                        IsReadOnly="True"
+                        AutoSize="TextChanges"
+                        MaximumHeightRequest="300"
+                        FontFamily="Consolas" />
 
                 <!-- Pulsanti -->
                 <HorizontalStackLayout x:Name="ButtonsContainer"
