@@ -54,6 +54,9 @@ public partial class MainPage : ContentPage
         // Inizializza UI
         InitializeInputEditor();
 
+        // Inizializza ToastService con il container
+        ToastService.Instance.Initialize(ToastContainer);
+
         // Carica tema salvato
         if (_settingsService != null)
         {

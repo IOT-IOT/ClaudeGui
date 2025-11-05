@@ -1,4 +1,5 @@
 using ClaudeCodeMAUI.Extensions;
+using ClaudeCodeMAUI.Services;
 using Microsoft.Maui.ApplicationModel.DataTransfer;
 using Serilog;
 using System.Diagnostics;
@@ -131,7 +132,9 @@ public partial class UnknownFieldsDialog : ContentPage
     private async void OnCopyJsonClicked(object sender, EventArgs e)
     {
         await Clipboard.SetTextAsync(_jsonLine);
-        await this.DisplaySelectableAlert("Copiato", "JSON copiato negli appunti", "OK");
+
+        // Mostra toast notification non bloccante
+        ToastService.Instance.ShowSuccess("JSON copiato negli appunti");
     }
 
     private async void OnContinueClicked(object sender, EventArgs e)

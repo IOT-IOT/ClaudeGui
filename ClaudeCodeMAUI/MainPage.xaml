@@ -150,6 +150,15 @@
                     Clicked="OnSendMessage" />
         </Grid>
 
+        <!-- Toast Notification Container (overlay globale) -->
+        <VerticalStackLayout x:Name="ToastContainer"
+                             Spacing="10"
+                             VerticalOptions="End"
+                             HorizontalOptions="End"
+                             Padding="0,0,20,20"
+                             InputTransparent="True"
+                             Grid.RowSpan="3" />
+
     </Grid>
 
 </ContentPage>

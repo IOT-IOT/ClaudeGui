@@ -18,7 +18,13 @@ public partial class App : Application
 
 	protected override Window CreateWindow(IActivationState? activationState)
 	{
-		_mainWindow = new Window(new AppShell());
+		var appShell = new AppShell();
+
+		_mainWindow = new Window(appShell);
+
+		// Inizializza il ToastService (il container sarà aggiunto a MainPage)
+		// Per ora lascia vuoto, verrà inizializzato quando MainPage viene creata
+		ToastService.Instance.Initialize(null);
 
 		// Carica e applica la posizione e dimensione salvate della finestra
 		RestoreWindowBounds();
