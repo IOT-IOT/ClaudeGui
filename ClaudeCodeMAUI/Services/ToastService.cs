@@ -152,15 +152,23 @@ public class ToastService
 
                     if (modalPage != null)
                     {
-                        var container = FindToastContainerInView(modalPage);
+                        // Se il modale è un NavigationPage, cerca nella sua CurrentPage
+                        Page targetPage = modalPage;
+                        if (modalPage is NavigationPage navPage && navPage.CurrentPage != null)
+                        {
+                            targetPage = navPage.CurrentPage;
+                            System.Diagnostics.Debug.WriteLine($"ToastService: NavigationPage rilevata, uso CurrentPage: {targetPage.GetType().Name}");
+                        }
+
+                        var container = FindToastContainerInView(targetPage);
                         if (container != null)
                         {
-                            System.Diagnostics.Debug.WriteLine($"ToastService: ✓ Trovato container nella pagina modale: {modalPage.GetType().Name}");
+                            System.Diagnostics.Debug.WriteLine($"ToastService: ✓ Trovato container nella pagina modale: {targetPage.GetType().Name}");
                             return container;
                         }
                         else
                         {
-                            System.Diagnostics.Debug.WriteLine($"ToastService: ✗ Container NON trovato nella pagina modale: {modalPage.GetType().Name}");
+                            System.Diagnostics.Debug.WriteLine($"ToastService: ✗ Container NON trovato nella pagina modale: {targetPage.GetType().Name}");
                         }
                     }
                 }
