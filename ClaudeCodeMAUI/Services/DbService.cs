@@ -1003,20 +1003,52 @@ namespace ClaudeCodeMAUI.Services
         /// Importa messaggi da file .jsonl nel database
         /// Rileva campi sconosciuti e interrompe se ne trova
         /// </summary>
+        /// <param name="sessionId">ID della sessione</param>
+        /// <param name="jsonlFilePath">Path del file .jsonl</param>
+        /// <param name="progressCallback">Callback per aggiornare progress (current, total)</param>
+        /// <param name="cancellationToken">Token per annullare l'operazione</param>
         /// <returns>Tupla: (messaggi importati, campi sconosciuti, uuid con errore)</returns>
         public async Task<(int imported, List<string> unknownFields, string? errorUuid)>
-            ImportMessagesFromJsonlAsync(string sessionId, string jsonlFilePath)
+            ImportMessagesFromJsonlAsync(
+                string sessionId,
+                string jsonlFilePath,
+                IProgress<(int current, int total)>? progressCallback = null,
+                CancellationToken cancellationToken = default)
         {
             var knownFields = GetKnownJsonFields();
             int imported = 0;
+            int totalLines = 0;
 
             try
             {
+                // Prima passata: conta le righe totali per il progress
+                if (progressCallback != null)
+                {
+                    using var countReader = new System.IO.StreamReader(jsonlFilePath);
+                    while (!countReader.EndOfStream)
+                    {
+                        await countReader.ReadLineAsync();
+                        totalLines++;
+                    }
+                    Log.Information("Total lines in file: {Total}", totalLines);
+                }
+
+                int lineNumber = 0;
+
                 using var reader = new System.IO.StreamReader(jsonlFilePath);
                 while (!reader.EndOfStream)
                 {
+                    // Check cancellation
+                    cancellationToken.ThrowIfCancellationRequested();
+
                     var line = await reader.ReadLineAsync();
-                    if (string.IsNullOrWhiteSpace(line)) continue;
+                    lineNumber++;
+
+                    if (string.IsNullOrWhiteSpace(line))
+                    {
+                        progressCallback?.Report((lineNumber, totalLines));
+                        continue;
+                    }
 
                     var json = System.Text.Json.JsonDocument.Parse(line);
                     var root = json.RootElement;
@@ -1042,6 +1074,7 @@ namespace ClaudeCodeMAUI.Services
                     if (!string.IsNullOrEmpty(uuid) && await MessageExistsByUuidAsync(uuid))
                     {
                         Log.Debug("Message with UUID {Uuid} already exists, skipping", uuid);
+                        progressCallback?.Report((lineNumber, totalLines));
                         continue;
                     }
 
@@ -1052,9 +1085,17 @@ namespace ClaudeCodeMAUI.Services
                     await SaveMessageAsync(sessionId, type ?? "unknown", content, timestamp, uuid);
 
                     imported++;
+
+                    // Report progress
+                    progressCallback?.Report((lineNumber, totalLines));
                 }
 
                 return (imported, new List<string>(), null);
+            }
+            catch (OperationCanceledException)
+            {
+                Log.Information("Import cancelled by user after {Imported} messages", imported);
+                throw;
             }
             catch (Exception ex)
             {

@@ -640,10 +640,12 @@ namespace ClaudeCodeMAUI.Views
 
         /// <summary>
         /// Handler per il menu contestuale "Aggiorna Messaggi".
-        /// Importa tutti i messaggi dal file .jsonl nel database.
+        /// Importa tutti i messaggi dal file .jsonl nel database con progress dialog.
         /// </summary>
         private async void OnUpdateMessagesClicked(object? sender, EventArgs e)
         {
+            ProgressDialog? progressDialog = null;
+
             try
             {
                 if (sender is MenuFlyoutItem menuItem && menuItem.BindingContext is SessionDisplayItem selectedItem)
@@ -671,10 +673,57 @@ namespace ClaudeCodeMAUI.Views
 
                     Log.Information("Starting message import from file: {FilePath}", filePath);
 
-                    var (imported, unknownFields, errorUuid) = await _dbService.ImportMessagesFromJsonlAsync(
-                        selectedItem.SessionId,
-                        filePath);
+                    // Crea e mostra il progress dialog
+                    progressDialog = new ProgressDialog();
+                    await Navigation.PushModalAsync(progressDialog);
 
+                    // Crea il progress callback
+                    var progress = new Progress<(int current, int total)>(update =>
+                    {
+                        progressDialog.UpdateProgress(
+                            update.current,
+                            update.total,
+                            $"Processando messaggi dal file..."
+                        );
+                    });
+
+                    // Esegui l'import con progress e cancellation support
+                    int imported = 0;
+                    List<string> unknownFields = new List<string>();
+                    string? errorUuid = null;
+                    bool cancelled = false;
+
+                    try
+                    {
+                        var result = await _dbService.ImportMessagesFromJsonlAsync(
+                            selectedItem.SessionId,
+                            filePath,
+                            progress,
+                            progressDialog.CancellationToken);
+
+                        imported = result.imported;
+                        unknownFields = result.unknownFields;
+                        errorUuid = result.errorUuid;
+
+                        // Segna come completato
+                        progressDialog.Complete();
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        Log.Information("Import cancelled by user");
+                        progressDialog.SetCancelled();
+                        cancelled = true;
+                    }
+
+                    // Aspetta che l'utente chiuda il progress dialog
+                    await progressDialog.CompletionTask;
+                    await Navigation.PopModalAsync();
+
+                    // Se cancellato, esci senza mostrare altri dialog
+                    if (cancelled)
+                        return;
+
+                    // Mostra risultati
                     if (unknownFields.Count > 0)
                     {
                         // Trova la riga JSON con l'errore per mostrarla nel dialog
@@ -701,6 +750,15 @@ namespace ClaudeCodeMAUI.Views
             catch (Exception ex)
             {
                 Log.Error(ex, "Failed to update messages");
+
+                // Segna il progress dialog come errore se ancora aperto
+                if (progressDialog != null)
+                {
+                    progressDialog.SetError(ex.Message);
+                    await progressDialog.CompletionTask;
+                    await Navigation.PopModalAsync();
+                }
+
                 await DisplayAlert("Errore", $"Impossibile aggiornare i messaggi:\n{ex.Message}", "OK");
             }
         }
