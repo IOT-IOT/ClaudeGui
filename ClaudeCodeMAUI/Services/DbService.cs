@@ -312,14 +312,36 @@ namespace ClaudeCodeMAUI.Services
         }
 
         /// <summary>
-        /// Salva un messaggio nella tabella messages.
-        /// Chiamato ogni volta che viene inviato un messaggio utente o ricevuto un messaggio assistant.
-        /// Il numero di sequenza viene calcolato automaticamente come MAX(sequence) + 1 per la conversazione.
+        /// Salva un messaggio nella tabella messages (versione semplificata per retrocompatibilità).
         /// </summary>
         /// <param name="conversationId">ID della sessione di conversazione</param>
         /// <param name="role">Ruolo del mittente: "user" o "assistant"</param>
         /// <param name="content">Contenuto del messaggio (può includere markdown)</param>
         public async Task SaveMessageAsync(string conversationId, string role, string content)
+        {
+            await SaveMessageAsync(conversationId, role, content, null, null);
+        }
+
+        /// <summary>
+        /// Salva un messaggio nel database con metadati completi dal file .jsonl
+        /// Il numero di sequenza viene calcolato automaticamente come MAX(sequence) + 1 per la conversazione.
+        /// </summary>
+        public async Task SaveMessageAsync(
+            string conversationId,
+            string role,
+            string content,
+            DateTime? timestamp = null,
+            string? uuid = null,
+            string? parentUuid = null,
+            string? version = null,
+            string? gitBranch = null,
+            bool? isSidechain = null,
+            string? userType = null,
+            string? cwd = null,
+            string? requestId = null,
+            string? model = null,
+            string? usageJson = null,
+            string? messageType = null)
         {
             // Prima ottieni il prossimo numero di sequenza per questa conversazione
             const string getSequenceSql = @"
@@ -328,8 +350,17 @@ namespace ClaudeCodeMAUI.Services
                 WHERE conversation_id = @ConversationId";
 
             const string insertSql = @"
-                INSERT INTO messages (conversation_id, role, content, timestamp, sequence)
-                VALUES (@ConversationId, @Role, @Content, @Timestamp, @Sequence)";
+                INSERT INTO messages (
+                    conversation_id, role, content, timestamp, sequence,
+                    uuid, parent_uuid, version, git_branch, is_sidechain,
+                    user_type, cwd, request_id, model, usage_json, message_type
+                )
+                VALUES (
+                    @ConversationId, @Role, @Content, @Timestamp, @Sequence,
+                    @Uuid, @ParentUuid, @Version, @GitBranch, @IsSidechain,
+                    @UserType, @Cwd, @RequestId, @Model, @UsageJson, @MessageType
+                )
+                ON DUPLICATE KEY UPDATE uuid = uuid";  // Ignora duplicati per uuid
 
             try
             {
@@ -345,19 +376,30 @@ namespace ClaudeCodeMAUI.Services
                     nextSequence = Convert.ToInt32(result);
                 }
 
-                // Inserisci il messaggio con il numero di sequenza calcolato
+                // Inserisci il messaggio con tutti i metadati
                 using (var insertCommand = new MySqlCommand(insertSql, connection))
                 {
                     insertCommand.Parameters.AddWithValue("@ConversationId", conversationId);
                     insertCommand.Parameters.AddWithValue("@Role", role);
                     insertCommand.Parameters.AddWithValue("@Content", content);
-                    insertCommand.Parameters.AddWithValue("@Timestamp", DateTime.UtcNow);
+                    insertCommand.Parameters.AddWithValue("@Timestamp", timestamp ?? DateTime.UtcNow);
                     insertCommand.Parameters.AddWithValue("@Sequence", nextSequence);
+                    insertCommand.Parameters.AddWithValue("@Uuid", uuid ?? (object)DBNull.Value);
+                    insertCommand.Parameters.AddWithValue("@ParentUuid", parentUuid ?? (object)DBNull.Value);
+                    insertCommand.Parameters.AddWithValue("@Version", version ?? (object)DBNull.Value);
+                    insertCommand.Parameters.AddWithValue("@GitBranch", gitBranch ?? (object)DBNull.Value);
+                    insertCommand.Parameters.AddWithValue("@IsSidechain", isSidechain ?? (object)DBNull.Value);
+                    insertCommand.Parameters.AddWithValue("@UserType", userType ?? (object)DBNull.Value);
+                    insertCommand.Parameters.AddWithValue("@Cwd", cwd ?? (object)DBNull.Value);
+                    insertCommand.Parameters.AddWithValue("@RequestId", requestId ?? (object)DBNull.Value);
+                    insertCommand.Parameters.AddWithValue("@Model", model ?? (object)DBNull.Value);
+                    insertCommand.Parameters.AddWithValue("@UsageJson", usageJson ?? (object)DBNull.Value);
+                    insertCommand.Parameters.AddWithValue("@MessageType", messageType ?? role);
 
                     await insertCommand.ExecuteNonQueryAsync();
 
-                    Log.Debug("Saved message for session {SessionId}: role={Role}, sequence={Sequence}, length={Length}",
-                             conversationId, role, nextSequence, content.Length);
+                    Log.Debug("Saved message: session={SessionId}, type={Type}, uuid={Uuid}, seq={Seq}",
+                             conversationId, messageType ?? role, uuid, nextSequence);
                 }
             }
             catch (Exception ex)
@@ -824,6 +866,250 @@ namespace ClaudeCodeMAUI.Services
             {
                 Log.Error(ex, "Failed to update session status: {SessionId}", sessionId);
                 throw;
+            }
+        }
+
+        // ===== METODI PER GESTIONE MESSAGGI COMPLETI CON METADATA =====
+
+        /// <summary>
+        /// Restituisce l'insieme dei campi JSON noti dal formato .jsonl di Claude Code
+        /// </summary>
+        public HashSet<string> GetKnownJsonFields()
+        {
+            return new HashSet<string>
+            {
+                // Campi root comuni
+                "type", "message", "timestamp", "uuid", "sessionId",
+                "parentUuid", "isSidechain", "userType", "cwd",
+                "version", "gitBranch", "requestId",
+
+                // Campi message object
+                "role", "content", "model", "id", "stop_reason",
+                "stop_sequence", "usage",
+
+                // Campi content array items
+                "text", "type",
+
+                // Campi tool_use
+                "name", "input", "tool_use_id",
+
+                // Campi tool_result
+                "is_error",
+
+                // Campi usage
+                "input_tokens", "output_tokens",
+                "cache_creation_input_tokens", "cache_read_input_tokens",
+
+                // Altri campi osservati
+                "summary", "metadata"
+            };
+        }
+
+        /// <summary>
+        /// Rileva campi sconosciuti in un elemento JSON confrontandolo con i campi noti
+        /// </summary>
+        public List<string> DetectUnknownFields(System.Text.Json.JsonElement root, HashSet<string> knownFields)
+        {
+            var unknownFields = new List<string>();
+            DetectUnknownFieldsRecursive(root, knownFields, "", unknownFields);
+            return unknownFields;
+        }
+
+        private void DetectUnknownFieldsRecursive(
+            System.Text.Json.JsonElement element,
+            HashSet<string> knownFields,
+            string path,
+            List<string> unknownFields)
+        {
+            foreach (var property in element.EnumerateObject())
+            {
+                var fieldName = string.IsNullOrEmpty(path)
+                    ? property.Name
+                    : $"{path}.{property.Name}";
+
+                // Controlla solo i nomi delle proprietà (non il path completo)
+                if (!knownFields.Contains(property.Name))
+                {
+                    unknownFields.Add(fieldName);
+                }
+
+                // Ricorsione per oggetti nested
+                if (property.Value.ValueKind == System.Text.Json.JsonValueKind.Object)
+                {
+                    DetectUnknownFieldsRecursive(property.Value, knownFields, fieldName, unknownFields);
+                }
+                // Ricorsione per array di oggetti
+                else if (property.Value.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    int index = 0;
+                    foreach (var item in property.Value.EnumerateArray())
+                    {
+                        if (item.ValueKind == System.Text.Json.JsonValueKind.Object)
+                        {
+                            DetectUnknownFieldsRecursive(item, knownFields, $"{fieldName}[{index}]", unknownFields);
+                        }
+                        index++;
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Legge le ultime N righe non vuote da un file .jsonl
+        /// Ottimizzato: legge solo ultimi 32KB invece di tutto il file
+        /// </summary>
+        public async Task<List<string>> ReadLastLinesFromFileAsync(
+            string filePath,
+            int maxLines = 10,
+            int bufferSizeKb = 32)
+        {
+            if (!System.IO.File.Exists(filePath))
+                return new List<string>();
+
+            try
+            {
+                await using var fs = new System.IO.FileStream(
+                    filePath,
+                    System.IO.FileMode.Open,
+                    System.IO.FileAccess.Read,
+                    System.IO.FileShare.ReadWrite  // Permette scritture concorrenti
+                );
+
+                var bufferSize = bufferSizeKb * 1024;
+                var offset = Math.Max(0, fs.Length - bufferSize);
+                fs.Seek(offset, System.IO.SeekOrigin.Begin);
+
+                using var reader = new System.IO.StreamReader(fs, System.Text.Encoding.UTF8);
+                var lines = new List<string>();
+
+                string? line;
+                while ((line = await reader.ReadLineAsync()) != null)
+                {
+                    if (!string.IsNullOrWhiteSpace(line))
+                        lines.Add(line);
+                }
+
+                // Ritorna ultime N righe
+                return lines.Skip(Math.Max(0, lines.Count - maxLines)).ToList();
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to read last lines from {FilePath}", filePath);
+                return new List<string>();
+            }
+        }
+
+        /// <summary>
+        /// Importa messaggi da file .jsonl nel database
+        /// Rileva campi sconosciuti e interrompe se ne trova
+        /// </summary>
+        /// <returns>Tupla: (messaggi importati, campi sconosciuti, uuid con errore)</returns>
+        public async Task<(int imported, List<string> unknownFields, string? errorUuid)>
+            ImportMessagesFromJsonlAsync(string sessionId, string jsonlFilePath)
+        {
+            var knownFields = GetKnownJsonFields();
+            int imported = 0;
+
+            try
+            {
+                using var reader = new System.IO.StreamReader(jsonlFilePath);
+                while (!reader.EndOfStream)
+                {
+                    var line = await reader.ReadLineAsync();
+                    if (string.IsNullOrWhiteSpace(line)) continue;
+
+                    var json = System.Text.Json.JsonDocument.Parse(line);
+                    var root = json.RootElement;
+
+                    // RILEVA CAMPI SCONOSCIUTI
+                    var unknownFields = DetectUnknownFields(root, knownFields);
+                    if (unknownFields.Count > 0)
+                    {
+                        var errorUuid = root.TryGetProperty("uuid", out var u) ? u.GetString() : null;
+                        return (imported, unknownFields, errorUuid);
+                    }
+
+                    // NESSUN FILTRO - salva TUTTI i tipi
+                    var type = root.GetProperty("type").GetString();
+
+                    // Estrai metadati base
+                    var uuid = root.TryGetProperty("uuid", out var uuidProp) ? uuidProp.GetString() : null;
+                    var timestamp = root.TryGetProperty("timestamp", out var tProp)
+                        ? DateTime.Parse(tProp.GetString())
+                        : DateTime.UtcNow;
+
+                    // Verifica se già presente (via uuid)
+                    if (!string.IsNullOrEmpty(uuid) && await MessageExistsByUuidAsync(uuid))
+                    {
+                        Log.Debug("Message with UUID {Uuid} already exists, skipping", uuid);
+                        continue;
+                    }
+
+                    // Estrai contenuto base per salvare
+                    string content = ExtractBasicContent(root);
+
+                    // Salva nel DB (metodo semplificato per import batch)
+                    await SaveMessageAsync(sessionId, type ?? "unknown", content, timestamp, uuid);
+
+                    imported++;
+                }
+
+                return (imported, new List<string>(), null);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to import messages from {FilePath}", jsonlFilePath);
+                throw;
+            }
+        }
+
+        private async Task<bool> MessageExistsByUuidAsync(string uuid)
+        {
+            const string sql = "SELECT COUNT(*) FROM messages WHERE uuid = @Uuid";
+
+            await using var connection = new MySqlConnection(_connectionString);
+            await connection.OpenAsync();
+
+            await using var command = new MySqlCommand(sql, connection);
+            command.Parameters.AddWithValue("@Uuid", uuid);
+
+            var count = Convert.ToInt32(await command.ExecuteScalarAsync());
+            return count > 0;
+        }
+
+        private string ExtractBasicContent(System.Text.Json.JsonElement root)
+        {
+            try
+            {
+                if (root.TryGetProperty("message", out var messageObj))
+                {
+                    if (messageObj.TryGetProperty("content", out var contentProp))
+                    {
+                        if (contentProp.ValueKind == System.Text.Json.JsonValueKind.String)
+                        {
+                            return contentProp.GetString() ?? "";
+                        }
+                        else if (contentProp.ValueKind == System.Text.Json.JsonValueKind.Array)
+                        {
+                            var sb = new System.Text.StringBuilder();
+                            foreach (var item in contentProp.EnumerateArray())
+                            {
+                                if (item.TryGetProperty("text", out var textProp))
+                                {
+                                    sb.AppendLine(textProp.GetString());
+                                }
+                            }
+                            return sb.ToString();
+                        }
+                    }
+                }
+
+                // Fallback: salva JSON completo
+                return root.GetRawText();
+            }
+            catch
+            {
+                return root.GetRawText();
             }
         }
     }

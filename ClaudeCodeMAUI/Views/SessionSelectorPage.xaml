@@ -154,6 +154,8 @@
                         <FlyoutBase.ContextFlyout>
                             <MenuFlyout>
                                 <MenuFlyoutItem Text="Apri con Notepad++" Clicked="OnOpenWithNotepadClicked" />
+                                <MenuFlyoutSeparator />
+                                <MenuFlyoutItem Text="Aggiorna Messaggi" Clicked="OnUpdateMessagesClicked" />
                             </MenuFlyout>
                         </FlyoutBase.ContextFlyout>
                         <Grid.GestureRecognizers>
@@ -183,15 +185,15 @@
                                HorizontalTextAlignment="End"
                                InputTransparent="True" />
 
-                        <!-- Colonna 3: Name -->
+                        <!-- Colonna 3: Name (EDITABILE) -->
                         <Entry Grid.Column="2"
                                Text="{Binding DisplayName}"
                                FontSize="12"
                                TextColor="White"
                                BackgroundColor="Transparent"
-                               IsReadOnly="True"
+                               IsReadOnly="False"
                                VerticalOptions="Center"
-                               InputTransparent="True" />
+                               Unfocused="OnNameEntryUnfocused" />
 
                         <!-- Colonna 4: Working Directory -->
                         <Entry Grid.Column="3"
@@ -241,16 +243,18 @@
                     TextColor="White"
                     Clicked="OnCancelClicked"
                     MinimumWidthRequest="120" />
-            <Button Text="Ricarica Lista"
+            <Button Text="Aggiorna Vista"
+                    ToolTipProperties.Text="Ricarica la lista dal database senza scansionare il filesystem"
                     BackgroundColor="#4A4A4A"
                     TextColor="White"
                     Clicked="OnRefreshClicked"
                     MinimumWidthRequest="120" />
-            <Button Text="Riscansiona"
+            <Button Text="Sincronizza Filesystem"
+                    ToolTipProperties.Text="Scansiona le directory .claude/projects e sincronizza con il database"
                     BackgroundColor="#CC6600"
                     TextColor="White"
                     Clicked="OnRescanClicked"
-                    MinimumWidthRequest="120" />
+                    MinimumWidthRequest="180" />
         </HorizontalStackLayout>
 
     </Grid>

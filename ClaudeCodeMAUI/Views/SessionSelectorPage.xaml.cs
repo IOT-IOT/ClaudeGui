@@ -592,5 +592,144 @@ namespace ClaudeCodeMAUI.Views
                 await DisplayAlert("Errore", $"Impossibile completare la riscansione:\n{ex.Message}", "OK");
             }
         }
+
+        /// <summary>
+        /// Handler per la modifica inline del campo Name.
+        /// Quando l'utente esce dal campo di testo, aggiorna il nome nel database.
+        /// </summary>
+        private async void OnNameEntryUnfocused(object sender, FocusEventArgs e)
+        {
+            try
+            {
+                if (sender is Entry entry && entry.BindingContext is SessionDisplayItem item)
+                {
+                    var newName = entry.Text?.Trim();
+
+                    // Valida il nome
+                    if (string.IsNullOrWhiteSpace(newName))
+                    {
+                        await DisplayAlert("Nome Invalido", "Il nome non può essere vuoto.", "OK");
+                        entry.Text = item.DisplayName; // Ripristina il valore originale
+                        return;
+                    }
+
+                    // Se non è cambiato, non fare nulla
+                    if (newName == item.DisplayName)
+                        return;
+
+                    Log.Information("Updating session name inline: {SessionId} -> {NewName}", item.SessionId, newName);
+
+                    // Aggiorna nel database
+                    await _dbService.UpdateSessionNameAsync(item.SessionId, newName);
+
+                    // Aggiorna l'oggetto in memoria
+                    item.DisplayName = newName;
+
+                    // Ricarica la lista per garantire coerenza
+                    UpdateCurrentSessions();
+
+                    Log.Information("Session name updated successfully");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to update session name inline");
+                await DisplayAlert("Errore", $"Impossibile aggiornare il nome:\n{ex.Message}", "OK");
+            }
+        }
+
+        /// <summary>
+        /// Handler per il menu contestuale "Aggiorna Messaggi".
+        /// Importa tutti i messaggi dal file .jsonl nel database.
+        /// </summary>
+        private async void OnUpdateMessagesClicked(object? sender, EventArgs e)
+        {
+            try
+            {
+                if (sender is MenuFlyoutItem menuItem && menuItem.BindingContext is SessionDisplayItem selectedItem)
+                {
+                    Log.Information("Update messages clicked for session: {SessionId}", selectedItem.SessionId);
+
+                    var filePath = GetSessionFilePath(selectedItem.SessionId, selectedItem.WorkingDirectory);
+
+                    if (!File.Exists(filePath))
+                    {
+                        await DisplayAlert("File non trovato", $"Il file non esiste:\n{filePath}", "OK");
+                        return;
+                    }
+
+                    bool confirm = await DisplayAlert(
+                        "Aggiorna Messaggi",
+                        $"Importare tutti i messaggi dal file .jsonl nel database?\n\n" +
+                        $"Sessione: {selectedItem.DisplayName}\n" +
+                        $"Eventuali messaggi duplicati (stesso UUID) verranno ignorati.",
+                        "Sì, Importa",
+                        "Annulla");
+
+                    if (!confirm)
+                        return;
+
+                    Log.Information("Starting message import from file: {FilePath}", filePath);
+
+                    var (imported, unknownFields, errorUuid) = await _dbService.ImportMessagesFromJsonlAsync(
+                        selectedItem.SessionId,
+                        filePath);
+
+                    if (unknownFields.Count > 0)
+                    {
+                        // Trova la riga JSON con l'errore per mostrarla nel dialog
+                        string? errorLine = await FindJsonLineByUuidAsync(filePath, errorUuid);
+                        var dialog = new UnknownFieldsDialog(errorLine ?? "", unknownFields, errorUuid ?? "unknown");
+                        await Navigation.PushModalAsync(new NavigationPage(dialog));
+
+                        await DisplayAlert("Import Interrotto",
+                            $"Import interrotto dopo {imported} messaggi.\n\n" +
+                            $"Trovati {unknownFields.Count} campi sconosciuti.",
+                            "OK");
+                    }
+                    else
+                    {
+                        await DisplayAlert("Import Completato",
+                            $"Importati con successo {imported} messaggi nel database.",
+                            "OK");
+                    }
+
+                    Log.Information("Message import completed: {Imported} imported, {UnknownCount} unknown fields",
+                        imported, unknownFields.Count);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to update messages");
+                await DisplayAlert("Errore", $"Impossibile aggiornare i messaggi:\n{ex.Message}", "OK");
+            }
+        }
+
+        /// <summary>
+        /// Cerca una riga JSON nel file .jsonl per UUID.
+        /// Usato per trovare la riga con campi sconosciuti quando l'import viene interrotto.
+        /// </summary>
+        private async Task<string?> FindJsonLineByUuidAsync(string filePath, string? uuid)
+        {
+            if (string.IsNullOrEmpty(uuid))
+                return null;
+
+            try
+            {
+                using var reader = new StreamReader(filePath);
+                while (!reader.EndOfStream)
+                {
+                    var line = await reader.ReadLineAsync();
+                    if (line?.Contains($"\"uuid\":\"{uuid}\"") == true)
+                        return line;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to find JSON line by UUID: {Uuid}", uuid);
+            }
+
+            return null;
+        }
     }
 }

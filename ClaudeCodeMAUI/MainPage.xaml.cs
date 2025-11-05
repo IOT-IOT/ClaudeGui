@@ -29,6 +29,9 @@ public partial class MainPage : ContentPage
     private ObservableCollection<SessionTabItem> _sessionTabs = new ObservableCollection<SessionTabItem>();
     private SessionTabItem? _currentTab;
 
+    // ===== Message Processing State =====
+    private DateTime? _lastProcessedTimestamp = null;
+
     // ===== UI State =====
     private bool _isPlanMode;
     private bool _isDarkTheme = true;
@@ -575,8 +578,18 @@ public partial class MainPage : ContentPage
             // Se è stata selezionata una sessione, aprila
             if (selected != null)
             {
-                // Se è il placeholder "Nuova sessione", SessionId sarà vuoto
+                // Validazione nome obbligatorio per sessioni esistenti
                 bool isNewSession = string.IsNullOrWhiteSpace(selected.SessionId) || selected.SessionId == "NEW_SESSION";
+
+                if (!isNewSession && string.IsNullOrWhiteSpace(selected.Name))
+                {
+                    await DisplayAlert("Nome Mancante",
+                        "Questa sessione non ha un nome assegnato.\n\n" +
+                        "Assegna un nome prima di aprirla utilizzando il pulsante 'Assegna Nome' " +
+                        "o modificando direttamente il campo nella tabella.",
+                        "OK");
+                    return;
+                }
 
                 if (isNewSession)
                 {
@@ -873,22 +886,75 @@ public partial class MainPage : ContentPage
 
     /// <summary>
     /// Handler per linee JSON ricevute dallo stdout del processo Claude.
+    /// IMPORTANTE: Usa stdout SOLO come trigger per leggere dal file .jsonl (source of truth).
+    /// Non usa il contenuto di jsonLine direttamente per evitare race conditions.
     /// </summary>
-    private void OnJsonLineReceived(SessionTabItem tabItem, string jsonLine)
+    private async void OnJsonLineReceived(SessionTabItem tabItem, string jsonLine)
     {
         try
         {
-            // Parse JSON
-            var json = JsonDocument.Parse(jsonLine);
+            // IGNORA il contenuto di stdout - usa solo come trigger
+            var filePath = GetSessionFilePath(tabItem.SessionId, tabItem.WorkingDirectory);
+
+            if (!File.Exists(filePath))
+            {
+                Log.Warning("Session file not found: {FilePath}", filePath);
+                return;
+            }
+
+            // Leggi ultime righe dal file con retry (32KB buffer)
+            var lastLines = await _dbService?.ReadLastLinesFromFileAsync(filePath, maxLines: 20, bufferSizeKb: 32)
+                ?? new List<string>();
+
+            foreach (var line in lastLines)
+            {
+                await ProcessMessageLineFromFileAsync(tabItem, line);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to process JSON line for tab: {SessionId}", tabItem.SessionId);
+        }
+    }
+
+    /// <summary>
+    /// Processa una singola riga JSON dal file .jsonl.
+    /// Rileva campi sconosciuti e salva nel database.
+    /// </summary>
+    private async Task ProcessMessageLineFromFileAsync(SessionTabItem tabItem, string jsonLine)
+    {
+        try
+        {
+            using var json = JsonDocument.Parse(jsonLine);
             var root = json.RootElement;
 
+            var timestamp = ExtractTimestamp(root);
+
+            // Skip duplicati basati su timestamp
+            if (_lastProcessedTimestamp.HasValue && timestamp <= _lastProcessedTimestamp)
+                return;
+
+            _lastProcessedTimestamp = timestamp;
+
+            // Rileva campi sconosciuti
+            if (_dbService != null)
+            {
+                var unknownFields = _dbService.DetectUnknownFields(root, _dbService.GetKnownJsonFields());
+                if (unknownFields.Count > 0)
+                {
+                    var uuid = ExtractUuid(root);
+                    await ShowUnknownFieldsDialogAsync(jsonLine, unknownFields, uuid);
+                    return; // INTERROMPI
+                }
+            }
+
+            // Salva nel DB - TUTTI i tipi (no filtro)
+            await SaveMessageFromJson(tabItem.SessionId, root);
+
+            // Aggiorna UI
             var type = root.GetProperty("type").GetString();
+            Log.Debug("[{SessionId}] Processed: {Type}", tabItem.SessionId.Substring(0, 8), type);
 
-            // TODO: Implementare rendering HTML per ogni tipo di messaggio
-            // Per ora log soltanto
-            Log.Debug("[{SessionId}] Received: {Type}", tabItem.SessionId.Substring(0, 8), type);
-
-            // Aggiorna UI se necessario
             MainThread.BeginInvokeOnMainThread(() =>
             {
                 // TODO: Aggiornare WebView del tab con nuovo contenuto
@@ -896,8 +962,170 @@ public partial class MainPage : ContentPage
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Failed to process JSON line for tab: {SessionId}", tabItem.SessionId);
+            Log.Error(ex, "Failed to process message line from file");
         }
+    }
+
+    /// <summary>
+    /// Costruisce il percorso del file .jsonl per una sessione.
+    /// </summary>
+    private string GetSessionFilePath(string sessionId, string workingDirectory)
+    {
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var encodedDir = workingDirectory.Replace(":\\", "--").Replace("\\", "-");
+        return Path.Combine(userProfile, ".claude", "projects", encodedDir, $"{sessionId}.jsonl");
+    }
+
+    /// <summary>
+    /// Mostra il dialog per campi JSON sconosciuti.
+    /// </summary>
+    private async Task ShowUnknownFieldsDialogAsync(string jsonLine, List<string> unknownFields, string uuid)
+    {
+        await MainThread.InvokeOnMainThreadAsync(async () =>
+        {
+            var dialog = new UnknownFieldsDialog(jsonLine, unknownFields, uuid);
+            await Navigation.PushModalAsync(new NavigationPage(dialog));
+        });
+    }
+
+    /// <summary>
+    /// Estrae il timestamp da un JsonElement.
+    /// </summary>
+    private DateTime ExtractTimestamp(JsonElement root)
+    {
+        if (root.TryGetProperty("timestamp", out var timestampProp))
+        {
+            if (timestampProp.ValueKind == JsonValueKind.Number)
+            {
+                var unixTime = timestampProp.GetInt64();
+                return DateTimeOffset.FromUnixTimeMilliseconds(unixTime).DateTime;
+            }
+            else if (timestampProp.ValueKind == JsonValueKind.String)
+            {
+                if (DateTime.TryParse(timestampProp.GetString(), out var parsed))
+                    return parsed;
+            }
+        }
+
+        return DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Estrae l'UUID da un JsonElement.
+    /// </summary>
+    private string ExtractUuid(JsonElement root)
+    {
+        if (root.TryGetProperty("uuid", out var uuidProp))
+            return uuidProp.GetString() ?? "unknown";
+
+        return "unknown";
+    }
+
+    /// <summary>
+    /// Salva un messaggio dal JSON nel database con tutti i metadata.
+    /// Supporta TUTTI i tipi di messaggio (user, assistant, tool_use, tool_result, summary, etc.)
+    /// </summary>
+    private async Task SaveMessageFromJson(string sessionId, JsonElement root)
+    {
+        try
+        {
+            if (_dbService == null)
+                return;
+
+            var type = root.GetProperty("type").GetString() ?? "unknown";
+            var uuid = root.TryGetProperty("uuid", out var u) ? u.GetString() : null;
+            var timestamp = ExtractTimestamp(root);
+
+            // Estrai metadata completi
+            string? parentUuid = root.TryGetProperty("parentUuid", out var pu) ? pu.GetString() : null;
+            string? version = root.TryGetProperty("version", out var v) ? v.GetString() : null;
+            string? gitBranch = root.TryGetProperty("gitBranch", out var gb) ? gb.GetString() : null;
+            bool? isSidechain = root.TryGetProperty("isSidechain", out var isc) ? isc.GetBoolean() : null;
+            string? userType = root.TryGetProperty("userType", out var ut) ? ut.GetString() : null;
+            string? cwd = root.TryGetProperty("cwd", out var c) ? c.GetString() : null;
+
+            string? requestId = null;
+            string? model = null;
+            string? usageJson = null;
+
+            // Per messaggi assistant, estrai requestId, model e usage
+            if (root.TryGetProperty("message", out var messageProp))
+            {
+                if (messageProp.TryGetProperty("id", out var idProp))
+                    requestId = idProp.GetString();
+
+                if (messageProp.TryGetProperty("model", out var modelProp))
+                    model = modelProp.GetString();
+
+                if (messageProp.TryGetProperty("usage", out var usageProp))
+                    usageJson = usageProp.GetRawText();
+            }
+
+            // Estrai contenuto
+            string content = ExtractBasicContent(root);
+
+            // Salva con tutti i metadata
+            await _dbService.SaveMessageAsync(
+                sessionId,
+                type,
+                content,
+                timestamp,
+                uuid,
+                parentUuid,
+                version,
+                gitBranch,
+                isSidechain,
+                userType,
+                cwd,
+                requestId,
+                model,
+                usageJson,
+                type // messageType = type
+            );
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to save message from JSON");
+        }
+    }
+
+    /// <summary>
+    /// Estrae il contenuto testuale base da un JsonElement.
+    /// Supporta vari formati (message.content array, text diretto, etc.)
+    /// </summary>
+    private string ExtractBasicContent(JsonElement root)
+    {
+        // Caso 1: message.content array (per assistant/user)
+        if (root.TryGetProperty("message", out var messageProp) &&
+            messageProp.TryGetProperty("content", out var contentProp))
+        {
+            if (contentProp.ValueKind == JsonValueKind.Array)
+            {
+                var texts = new List<string>();
+                foreach (var item in contentProp.EnumerateArray())
+                {
+                    if (item.TryGetProperty("text", out var textProp))
+                        texts.Add(textProp.GetString() ?? "");
+                }
+                return string.Join("\n", texts);
+            }
+            else if (contentProp.ValueKind == JsonValueKind.String)
+            {
+                return contentProp.GetString() ?? "";
+            }
+        }
+
+        // Caso 2: campo "text" diretto
+        if (root.TryGetProperty("text", out var textField))
+            return textField.GetString() ?? "";
+
+        // Caso 3: summary.text
+        if (root.TryGetProperty("summary", out var summaryProp) &&
+            summaryProp.TryGetProperty("text", out var summaryText))
+            return summaryText.GetString() ?? "";
+
+        // Fallback: ritorna JSON completo
+        return root.GetRawText();
     }
 
     /// <summary>

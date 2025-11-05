@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="ClaudeCodeMAUI.Views.UnknownFieldsDialog"
+             Title="Unknown JSON Fields Detected"
+             BackgroundColor="#1E1E1E">
+
+    <ScrollView Padding="20">
+        <VerticalStackLayout Spacing="15">
+
+            <!-- Header -->
+            <Label Text="⚠️ Unknown JSON Fields Detected"
+                   FontSize="20"
+                   FontAttributes="Bold"
+                   TextColor="Orange"
+                   HorizontalOptions="Center" />
+
+            <Label Text="The following fields were found in the JSON but are not in the known schema:"
+                   TextColor="White"
+                   HorizontalOptions="Center" />
+
+            <!-- Lista campi sconosciuti -->
+            <Frame BackgroundColor="#2A2A2A" Padding="10">
+                <VerticalStackLayout x:Name="UnknownFieldsContainer" Spacing="5" />
+            </Frame>
+
+            <!-- UUID Messaggio -->
+            <Label Text="Message UUID:" FontAttributes="Bold" TextColor="White" />
+            <Entry x:Name="UuidEntry"
+                   IsReadOnly="True"
+                   TextColor="LightBlue"
+                   BackgroundColor="#2A2A2A" />
+
+            <!-- JSON Completo -->
+            <Label Text="Full JSON:" FontAttributes="Bold" TextColor="White" />
+            <Editor x:Name="JsonEditor"
+                    IsReadOnly="True"
+                    TextColor="White"
+                    BackgroundColor="#2A2A2A"
+                    AutoSize="TextChanges"
+                    MaximumHeightRequest="400" />
+
+            <!-- Pulsanti -->
+            <HorizontalStackLayout Spacing="10" HorizontalOptions="Center">
+                <Button Text="Copy JSON"
+                        BackgroundColor="#4A6B9A"
+                        TextColor="White"
+                        Clicked="OnCopyJsonClicked" />
+                <Button Text="Close"
+                        BackgroundColor="#555555"
+                        TextColor="White"
+                        Clicked="OnCloseClicked" />
+            </HorizontalStackLayout>
+
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>
