@@ -332,8 +332,9 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
                 }
             }
 
-            // Avvia il processo Claude
-            processManager.Start();
+            // NON avviare il processo qui - sarà avviato lazy al primo messaggio (lazy initialization)
+            // Questo risparmia risorse se l'utente apre il tab ma non invia messaggi
+            Log.Debug("Process NOT started yet - will start on first message (lazy initialization)");
 
             // Aggiorna status nel database (se necessario)
             if (_dbService != null && session.Status != "open")
@@ -755,6 +756,17 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
             {
                 await HandleExitCommandAsync();
                 return;
+            }
+
+            // Lazy initialization: avvia il processo se non è ancora stato avviato
+            // Questo permette di risparmiare risorse se l'utente apre tab senza inviare messaggi
+            if (!_currentTab.ProcessManager.IsRunning)
+            {
+                Log.Information("Starting Claude process on first message for session {SessionId}", _currentTab.SessionId);
+                _currentTab.ProcessManager.Start();
+
+                // Attendi che il processo si avvii completamente prima di inviare il messaggio
+                await Task.Delay(1000);
             }
 
             // Invia il messaggio al processo Claude
