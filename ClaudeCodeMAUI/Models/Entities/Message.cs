@@ -40,9 +40,10 @@ public class Message
     /// <summary>
     /// UUID univoco del messaggio
     /// </summary>
+    [Required]
     [StringLength(36)]
     [Column("uuid")]
-    public string? Uuid { get; set; }
+    public string Uuid { get; set; } = null!;
 
     /// <summary>
     /// UUID del messaggio parent (per thread/sidechain)
