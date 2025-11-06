@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using ClaudeCodeMAUI.Models;
+using ClaudeCodeMAUI.Models.Entities;
 using Serilog;
 
 namespace ClaudeCodeMAUI.Services
@@ -218,12 +219,12 @@ namespace ClaudeCodeMAUI.Services
                             else if (dbSession.Excluded)
                             {
                                 // ========== SESSIONE ESCLUSA ==========
-                                Log.Debug("  Skipping excluded session: {SessionId}", sessionId);
+                                //Log.Debug("  Skipping excluded session: {SessionId}", sessionId);
                             }
                             else
                             {
                                 // ========== SESSIONE VALIDA GIÀ PROCESSATA ==========
-                                Log.Debug("  Session already processed and valid: {SessionId}", sessionId);
+                                //Log.Debug("  Session already processed and valid: {SessionId}", sessionId);
                             }
                         }
                         catch (Exception ex)
@@ -265,8 +266,8 @@ namespace ClaudeCodeMAUI.Services
         /// Ottiene le sessioni con status = 'open' dal database.
         /// Utilizzato al boot per riaprire le sessioni che erano aperte.
         /// </summary>
-        /// <returns>Lista di sessioni aperte dal DB</returns>
-        public async Task<List<DbService.SessionDbRow>> GetOpenSessionsAsync()
+        /// <returns>Lista di entity Session aperte dal DB</returns>
+        public async Task<List<Session>> GetOpenSessionsAsync()
         {
             return await _dbService.GetOpenSessionsAsync();
         }
@@ -275,8 +276,8 @@ namespace ClaudeCodeMAUI.Services
         /// Ottiene le sessioni con status = 'closed' dal database.
         /// Utilizzato per popolare la lista nel SessionSelectorPage.
         /// </summary>
-        /// <returns>Lista di sessioni chiuse dal DB</returns>
-        public async Task<List<DbService.SessionDbRow>> GetClosedSessionsAsync()
+        /// <returns>Lista di entity Session chiuse dal DB</returns>
+        public async Task<List<Session>> GetClosedSessionsAsync()
         {
             return await _dbService.GetClosedSessionsAsync();
         }

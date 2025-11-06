@@ -1,12 +1,14 @@
 using ClaudeCodeMAUI.Extensions;
 using ClaudeCodeMAUI.Services;
 using ClaudeCodeMAUI.Models;
+using ClaudeCodeMAUI.Models.Entities;
 using ClaudeCodeMAUI.Utilities;
 using ClaudeCodeMAUI.Views;
 using Microsoft.Extensions.Configuration;
 using Serilog;
 using System.Collections.ObjectModel;
 using System.Text.Json;
+using System.ComponentModel;
 
 #if WINDOWS
 using Microsoft.Maui.Platform;
@@ -18,7 +20,7 @@ namespace ClaudeCodeMAUI;
 /// MainPage con supporto multi-sessione tramite TabView.
 /// Ogni tab rappresenta una sessione Claude Code indipendente con il proprio ProcessManager.
 /// </summary>
-public partial class MainPage : ContentPage
+public partial class MainPage : ContentPage, INotifyPropertyChanged
 {
     // ===== Servizi =====
     private readonly DbService? _dbService;
@@ -37,6 +39,32 @@ public partial class MainPage : ContentPage
     private bool _isPlanMode;
     private bool _isDarkTheme = true;
 
+    private string _noSessionsPlaceholderText = "⏳ Caricamento sessioni...";
+    /// <summary>
+    /// Testo da visualizzare nel placeholder quando non ci sono sessioni aperte.
+    /// Inizialmente mostra "Caricamento sessioni...", poi "Nessuna Sessione Aperta" quando il caricamento è completato.
+    /// </summary>
+    public string NoSessionsPlaceholderText
+    {
+        get => _noSessionsPlaceholderText;
+        set
+        {
+            if (_noSessionsPlaceholderText != value)
+            {
+                _noSessionsPlaceholderText = value;
+                OnPropertyChanged(nameof(NoSessionsPlaceholderText));
+            }
+        }
+    }
+
+    // Implementazione INotifyPropertyChanged
+    public new event PropertyChangedEventHandler? PropertyChanged;
+
+    protected new void OnPropertyChanged(string propertyName)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
     /// <summary>
     /// Costruttore principale con dependency injection
     /// </summary>
@@ -50,6 +78,9 @@ public partial class MainPage : ContentPage
         _settingsService = new SettingsService();
 
         Log.Information("MainPage initialized (Multi-Session Mode)");
+
+        // Imposta BindingContext per data binding
+        BindingContext = this;
 
         // Inizializza UI
         InitializeInputEditor();
@@ -133,6 +164,8 @@ public partial class MainPage : ContentPage
             if (openSessions.Count == 0)
             {
                 Log.Information("No open sessions found");
+                // Aggiorna placeholder: il caricamento è completato ma non ci sono sessioni
+                NoSessionsPlaceholderText = "📂 Nessuna Sessione Aperta";
                 return;
             }
 
@@ -157,41 +190,34 @@ public partial class MainPage : ContentPage
     #region Tab Management
 
     /// <summary>
-    /// Apre una sessione in un nuovo tab (da SessionDbRow).
+    /// Apre una sessione in un nuovo tab (da entity Session).
     /// </summary>
-    /// <param name="sessionDbRow">Record del database della sessione da aprire</param>
+    /// <param name="session">Entity Session dal database della sessione da aprire</param>
     /// <param name="resumeExisting">True se è una sessione esistente da riprendere con --resume</param>
-    private async Task OpenSessionInNewTabAsync(DbService.SessionDbRow sessionDbRow, bool resumeExisting)
+    private async Task OpenSessionInNewTabAsync(Session session, bool resumeExisting)
     {
         try
         {
             Log.Information("Opening session in new tab: {SessionId}, Resume: {Resume}",
-                sessionDbRow.SessionId, resumeExisting);
+                session.SessionId, resumeExisting);
 
-            var displayName = string.IsNullOrWhiteSpace(sessionDbRow.Name)
-                ? $"Session {sessionDbRow.SessionId.Substring(0, 8)}..."
-                : sessionDbRow.Name;
+            var displayName = string.IsNullOrWhiteSpace(session.Name)
+                ? $"Session {session.SessionId.Substring(0, 8)}..."
+                : session.Name;
 
             // Crea un nuovo SessionTabItem
             var tabItem = new SessionTabItem
             {
-                SessionId = sessionDbRow.SessionId,
-                Name = sessionDbRow.Name,
-                WorkingDirectory = sessionDbRow.WorkingDirectory,
-                Session = new ConversationSession
-                {
-                    SessionId = sessionDbRow.SessionId,
-                    TabTitle = displayName,
-                    WorkingDirectory = sessionDbRow.WorkingDirectory,
-                    Status = "active"
-                }
+                SessionId = session.SessionId,
+                Name = session.Name,
+                WorkingDirectory = session.WorkingDirectory ?? string.Empty
             };
 
             // Crea ProcessManager per questa sessione
             var processManager = new ClaudeProcessManager(
-                resumeSessionId: resumeExisting ? sessionDbRow.SessionId : null,
-                dbSessionId: sessionDbRow.SessionId,
-                workingDirectory: sessionDbRow.WorkingDirectory
+                resumeSessionId: resumeExisting ? session.SessionId : null,
+                dbSessionId: session.SessionId,
+                workingDirectory: session.WorkingDirectory ?? string.Empty
             );
 
             // Sottoscrivi eventi ProcessManager
@@ -205,6 +231,9 @@ public partial class MainPage : ContentPage
             // Crea il contenuto del tab
             var tabContent = new SessionTabContent();
             tabContent.SetSessionTabItem(tabItem);
+
+            // Salva il riferimento al TabContent nel SessionTabItem
+            tabItem.TabContent = tabContent;
 
             // Aggiungi alla collezione
             _sessionTabs.Add(tabItem);
@@ -271,9 +300,9 @@ public partial class MainPage : ContentPage
             // Carica gli ultimi 50 messaggi se stiamo riprendendo una sessione esistente
             if (resumeExisting && _dbService != null)
             {
-                var messages = await _dbService.GetLastMessagesAsync(sessionDbRow.SessionId, count: 50);
+                var messages = await _dbService.GetLastMessagesAsync(session.SessionId, count: 50);
                 Log.Information("Loaded {Count} historical messages for session {SessionId}",
-                    messages.Count, sessionDbRow.SessionId);
+                    messages.Count, session.SessionId);
 
                 // Renderizza i messaggi storici in HTML
                 if (messages.Count > 0)
@@ -307,16 +336,16 @@ public partial class MainPage : ContentPage
             processManager.Start();
 
             // Aggiorna status nel database (se necessario)
-            if (_dbService != null && sessionDbRow.Status != "open")
+            if (_dbService != null && session.Status != "open")
             {
-                await _dbService.UpdateSessionStatusAsync(sessionDbRow.SessionId, "open");
+                await _dbService.UpdateSessionStatusAsync(session.SessionId, "open");
             }
 
             Log.Information("Session opened successfully in new tab");
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Failed to open session in new tab: {SessionId}", sessionDbRow.SessionId);
+            Log.Error(ex, "Failed to open session in new tab: {SessionId}", session.SessionId);
             await this.DisplaySelectableAlert("Error", $"Failed to open session:\n{ex.Message}", "OK");
         }
     }
@@ -338,14 +367,7 @@ public partial class MainPage : ContentPage
             {
                 SessionId = sessionInfo.SessionId,
                 Name = sessionInfo.Name,
-                WorkingDirectory = sessionInfo.WorkingDirectory,
-                Session = new ConversationSession
-                {
-                    SessionId = sessionInfo.SessionId,
-                    TabTitle = sessionInfo.DisplayName,
-                    WorkingDirectory = sessionInfo.WorkingDirectory,
-                    Status = "active"
-                }
+                WorkingDirectory = sessionInfo.WorkingDirectory
             };
 
             // Crea ProcessManager per questa sessione
@@ -366,6 +388,9 @@ public partial class MainPage : ContentPage
             // Crea il contenuto del tab
             var tabContent = new SessionTabContent();
             tabContent.SetSessionTabItem(tabItem);
+
+            // Salva il riferimento al TabContent nel SessionTabItem
+            tabItem.TabContent = tabContent;
 
             // Aggiungi alla collezione
             _sessionTabs.Add(tabItem);
@@ -510,6 +535,7 @@ public partial class MainPage : ContentPage
             {
                 SessionTabContainer.IsVisible = false;
                 NoSessionsPlaceholder.IsVisible = true;
+                NoSessionsPlaceholderText = "📂 Nessuna Sessione Aperta";
                 _currentTab = null;
                 CurrentTabContent.Content = null;
             }
@@ -734,11 +760,8 @@ public partial class MainPage : ContentPage
             // Invia il messaggio al processo Claude
             await _currentTab.ProcessManager.SendMessageAsync(message);
 
-            // Salva il messaggio utente nel database
-            if (_dbService != null)
-            {
-                await _dbService.SaveMessageAsync(_currentTab.SessionId, "user", message);
-            }
+            // Il messaggio verrà salvato nel database quando Claude Code lo scrive nel .jsonl
+            // (via OnJsonLineReceived → SaveMessageFromJson)
 
             // Pulisci l'input
             InputEditor.Text = string.Empty;
@@ -944,7 +967,8 @@ public partial class MainPage : ContentPage
             // Rileva campi sconosciuti - MOSTRA DIALOG per decidere
             if (_dbService != null)
             {
-                var unknownFields = _dbService.DetectUnknownFields(root, _dbService.GetKnownJsonFields());
+                //var unknownFields = _dbService.DetectUnknownFields(root, _dbService.GetKnownJsonFields());
+                List<String>? unknownFields = []; //Disabilitato permanentemente
                 if (unknownFields.Count > 0)
                 {
                     var uuid = ExtractUuid(root);
@@ -978,17 +1002,24 @@ public partial class MainPage : ContentPage
                 }
             }
 
-            // Salva nel DB - TUTTI i tipi (no filtro)
-            await SaveMessageFromJson(tabItem.SessionId, root);
-
-            // Aggiorna UI
+            // Estrai type per decidere se aggiornare WebView
             var type = root.GetProperty("type").GetString();
-            Log.Debug("[{SessionId}] Processed: {Type}", tabItem.SessionId.Substring(0, 8), type);
+            Log.Debug("[{SessionId}] Received: {Type}", tabItem.SessionId.Substring(0, 8), type);
 
-            MainThread.BeginInvokeOnMainThread(() =>
+            // PRIMA: Aggiorna WebView immediatamente (dal JSON già in memoria - nessun round-trip DB)
+            if (type == "user" || type == "assistant")
             {
-                // TODO: Aggiornare WebView del tab con nuovo contenuto
-            });
+                var content = ExtractBasicContent(root);
+                if (!string.IsNullOrWhiteSpace(content))
+                {
+                    await AppendMessageToWebViewAsync(tabItem, type, content);
+                    Log.Debug("[{SessionId}] WebView updated for {Type}", tabItem.SessionId.Substring(0, 8), type);
+                }
+            }
+
+            // POI: Salva nel DB per persistenza - TUTTI i tipi (no filtro)
+            await SaveMessageFromJson(tabItem.SessionId, root);
+            Log.Debug("[{SessionId}] Saved to DB: {Type}", tabItem.SessionId.Substring(0, 8), type);
         }
         catch (Exception ex)
         {
@@ -1004,6 +1035,71 @@ public partial class MainPage : ContentPage
         var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var encodedDir = workingDirectory.Replace(":\\", "--").Replace("\\", "-");
         return Path.Combine(userProfile, ".claude", "projects", encodedDir, $"{sessionId}.jsonl");
+    }
+
+    /// <summary>
+    /// Aggiunge un messaggio alla WebView del tab specificato.
+    /// Usa la funzione JavaScript appendHtmlBase64() per aggiungere il contenuto senza ricaricare la pagina.
+    /// </summary>
+    /// <param name="tabItem">Tab di destinazione</param>
+    /// <param name="role">Ruolo del messaggio: "user" o "assistant"</param>
+    /// <param name="content">Contenuto del messaggio</param>
+    private async Task AppendMessageToWebViewAsync(SessionTabItem tabItem, string role, string content)
+    {
+        try
+        {
+            // Verifica che il tab sia ancora valido
+            if (tabItem?.TabContent?.WebView == null)
+            {
+                Log.Warning("Cannot append message: tab or WebView is null");
+                return;
+            }
+
+            // Crea renderer per generare HTML
+            var renderer = new Utilities.MarkdownHtmlRenderer();
+            string htmlFragment;
+
+            // Genera HTML in base al ruolo
+            if (role == "user")
+            {
+                htmlFragment = renderer.RenderUserMessage(content);
+            }
+            else if (role == "assistant")
+            {
+                htmlFragment = renderer.RenderAssistantMessage(content);
+            }
+            else
+            {
+                // Skip altri tipi di messaggi (tool_use, tool_result, result, ecc.)
+                Log.Debug("Skipping message type: {Role}", role);
+                return;
+            }
+
+            // Codifica HTML in Base64 (UTF-8)
+            var htmlBytes = System.Text.Encoding.UTF8.GetBytes(htmlFragment);
+            var base64Html = Convert.ToBase64String(htmlBytes);
+
+            Log.Information("Appending {Role} message to WebView: {Length} chars -> {Base64Length} Base64 chars",
+                role, htmlFragment.Length, base64Html.Length);
+
+            // Chiama la funzione JavaScript appendHtmlBase64() che:
+            // - Decodifica Base64 -> HTML string
+            // - Appende al container (insertAdjacentHTML)
+            // - Applica syntax highlighting
+            // - Auto-scroll in fondo
+            var script = $"appendHtmlBase64('{base64Html}')";
+
+            // IMPORTANTE: EvaluateJavaScriptAsync deve essere chiamato dal thread UI
+            await MainThread.InvokeOnMainThreadAsync(async () =>
+            {
+                var result = await tabItem.TabContent.WebView.EvaluateJavaScriptAsync(script);
+                Log.Debug("JavaScript result: {Result}", result ?? "null");
+            });
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to append message to WebView for session {SessionId}", tabItem?.SessionId);
+        }
     }
 
     /// <summary>
@@ -1077,9 +1173,6 @@ public partial class MainPage : ContentPage
             string? requestId = null;
             string? model = null;
             string? usageJson = null;
-            int? cache5mTokens = null;
-            int? cache1hTokens = null;
-            string? serviceTier = null;
 
             // Per messaggi assistant, estrai requestId, model e usage
             if (root.TryGetProperty("message", out var messageProp))
@@ -1093,27 +1186,15 @@ public partial class MainPage : ContentPage
                 if (messageProp.TryGetProperty("usage", out var usageProp))
                 {
                     usageJson = usageProp.GetRawText();
-
-                    // Estrai campi cache Anthropic
-                    if (usageProp.TryGetProperty("cache_creation", out var cacheCreation))
-                    {
-                        if (cacheCreation.TryGetProperty("ephemeral_5m_input_tokens", out var cache5m))
-                            cache5mTokens = cache5m.GetInt32();
-
-                        if (cacheCreation.TryGetProperty("ephemeral_1h_input_tokens", out var cache1h))
-                            cache1hTokens = cache1h.GetInt32();
-                    }
-
-                    if (usageProp.TryGetProperty("service_tier", out var tierProp))
-                        serviceTier = tierProp.GetString();
                 }
             }
 
             // Estrai contenuto
             string content = ExtractBasicContent(root);
 
-            // Salva con tutti i metadata
+            // Salva con tutti i metadata (modalità standalone: passa null per auto-save)
             await _dbService.SaveMessageAsync(
+                null,
                 sessionId,
                 type,
                 content,
@@ -1128,10 +1209,7 @@ public partial class MainPage : ContentPage
                 requestId,
                 model,
                 usageJson,
-                type, // messageType = type
-                cache5mTokens,
-                cache1hTokens,
-                serviceTier
+                type // messageType = type
             );
         }
         catch (Exception ex)

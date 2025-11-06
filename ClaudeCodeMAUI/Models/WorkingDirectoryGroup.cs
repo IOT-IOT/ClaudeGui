@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using ClaudeCodeMAUI.Services;
+using ClaudeCodeMAUI.Models.Entities;
 
 namespace ClaudeCodeMAUI.Models
 {
@@ -28,9 +28,9 @@ namespace ClaudeCodeMAUI.Models
         public int SessionCount { get; set; }
 
         /// <summary>
-        /// Lista di tutte le sessioni appartenenti a questa working directory
+        /// Lista di tutte le sessioni (entity Session) appartenenti a questa working directory
         /// </summary>
-        public List<DbService.SessionDbRow> Sessions { get; set; } = new List<DbService.SessionDbRow>();
+        public List<Session> Sessions { get; set; } = new List<Session>();
 
         /// <summary>
         /// Testo da visualizzare nella tab/dropdown: "C:\Sources\MyProject (5)"

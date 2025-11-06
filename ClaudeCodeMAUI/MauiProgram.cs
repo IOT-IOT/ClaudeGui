@@ -4,7 +4,10 @@ using System.Reflection;
 using Serilog;
 using Serilog.Extensions.Logging;
 using ClaudeCodeMAUI.Services;
+using ClaudeCodeMAUI.Models.Entities;
 using CommunityToolkit.Maui;
+using Microsoft.EntityFrameworkCore;
+using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 
 namespace ClaudeCodeMAUI;
 
@@ -51,9 +54,40 @@ public static class MauiProgram
 
 		if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
 		{
-			var dbService = new DbService(username, password);
-			builder.Services.AddSingleton(dbService);
-			builder.Services.AddSingleton(sp => new SessionScannerService(dbService));
+			// Costruisci connection string per MariaDB
+			var connectionString = $"Server=192.168.1.11;Port=3306;Database=ClaudeGui;User={username};Password={password};CharSet=utf8mb4;";
+
+			// Registra Entity Framework Core DbContextFactory (per uso con Singleton services)
+			builder.Services.AddDbContextFactory<ClaudeGuiDbContext>(options =>
+			{
+				options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString), mySqlOptions =>
+				{
+					// Configurazioni opzionali per performance e resilienza
+					mySqlOptions.EnableRetryOnFailure(
+						maxRetryCount: 3,
+						maxRetryDelay: TimeSpan.FromSeconds(5),
+						errorNumbersToAdd: null);
+					mySqlOptions.CommandTimeout(30);
+				});
+
+				// Abilita logging dettagliato per SQL queries in DEBUG
+#if DEBUG
+				options.EnableSensitiveDataLogging();
+				options.EnableDetailedErrors();
+#endif
+			});
+
+			// Registra DbService con DbContextFactory per migrazione graduale
+			// TODO: Rimuovere DbService quando migrazione EF Core sarà completa
+			builder.Services.AddSingleton<DbService>(sp =>
+			{
+				var dbContextFactory = sp.GetRequiredService<IDbContextFactory<ClaudeGuiDbContext>>();
+				return new DbService(username, password, dbContextFactory);
+			});
+
+			builder.Services.AddSingleton(sp => new SessionScannerService(sp.GetRequiredService<DbService>()));
+
+			Log.Information("Database services registered (EF Core + DbService legacy)");
 		}
 		else
 		{

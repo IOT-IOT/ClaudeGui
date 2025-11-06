@@ -1,9 +1,11 @@
+using ClaudeCodeMAUI.Models;
+using ClaudeCodeMAUI.Models.Entities;
+using Microsoft.EntityFrameworkCore;
+using MySqlConnector;
+using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using MySqlConnector;
-using ClaudeCodeMAUI.Models;
-using Serilog;
 
 namespace ClaudeCodeMAUI.Services
 {
@@ -19,13 +21,15 @@ namespace ClaudeCodeMAUI.Services
         private const string DB_NAME = "ClaudeGui";
 
         private readonly string _connectionString;
+        private readonly IDbContextFactory<ClaudeGuiDbContext>? _dbContextFactory;
 
         /// <summary>
         /// Constructor. Builds connection string from hardcoded values + User Secrets credentials.
         /// </summary>
         /// <param name="username">Database username from User Secrets</param>
         /// <param name="password">Database password from User Secrets</param>
-        public DbService(string username, string password)
+        /// <param name="dbContextFactory">Entity Framework DbContextFactory (optional, per migrazione graduale)</param>
+        public DbService(string username, string password, IDbContextFactory<ClaudeGuiDbContext>? dbContextFactory = null)
         {
             if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
             {
@@ -46,8 +50,10 @@ namespace ClaudeCodeMAUI.Services
                 DefaultCommandTimeout = 30
             }.ConnectionString;
 
-            Log.Information("DbService initialized with connection: {Host}:{Port}/{Database}",
-                            DB_HOST, DB_PORT, DB_NAME);
+            _dbContextFactory = dbContextFactory;
+
+            Log.Information("DbService initialized with connection: {Host}:{Port}/{Database} (EF Core: {EFEnabled})",
+                            DB_HOST, DB_PORT, DB_NAME, _dbContextFactory != null);
         }
 
         /// <summary>
@@ -71,39 +77,8 @@ namespace ClaudeCodeMAUI.Services
             }
         }
 
-        /// <summary>
-        /// Inserts a new conversation session into the database.
-        /// Called when first session_id is received from Claude.
-        /// </summary>
-        public async Task InsertSessionAsync(ConversationSession session)
-        {
-            const string sql = @"
-                INSERT INTO conversations (session_id, tab_title, last_activity, status, working_directory)
-                VALUES (@SessionId, @TabTitle,  @LastActivity, @Status, @WorkingDirectory)";
-
-            try
-            {
-                using var connection = new MySqlConnection(_connectionString);
-                await connection.OpenAsync();
-
-                using var command = new MySqlCommand(sql, connection);
-                command.Parameters.AddWithValue("@SessionId", session.SessionId);
-                command.Parameters.AddWithValue("@TabTitle", session.TabTitle);
-                command.Parameters.AddWithValue("@LastActivity", session.LastActivity);
-                command.Parameters.AddWithValue("@Status", session.Status);
-                command.Parameters.AddWithValue("@WorkingDirectory", session.WorkingDirectory);
-
-                await command.ExecuteNonQueryAsync();
-
-                Log.Information("Inserted new session: {SessionId} - {TabTitle} - WorkingDir: {WorkingDir}",
-                    session.SessionId, session.TabTitle, session.WorkingDirectory);
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "Failed to insert session: {SessionId}", session.SessionId);
-                throw;
-            }
-        }
+        // METODO LEGACY RIMOSSO - Usava ConversationSession e tabella conversations
+        // Sostituito da: InsertSessionAsync(string sessionId, string? name, string workingDirectory, DateTime? lastActivity)
 
         /// <summary>
         /// Updates the status of a conversation session.
@@ -111,21 +86,15 @@ namespace ClaudeCodeMAUI.Services
         /// </summary>
         public async Task UpdateStatusAsync(string sessionId, string status)
         {
-            const string sql = @"
-                UPDATE conversations
-                SET status = @Status, updated_at = NOW()
-                WHERE session_id = @SessionId";
-
             try
             {
-                using var connection = new MySqlConnection(_connectionString);
-                await connection.OpenAsync();
+                using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
-                using var command = new MySqlCommand(sql, connection);
-                command.Parameters.AddWithValue("@Status", status);
-                command.Parameters.AddWithValue("@SessionId", sessionId);
-
-                var rowsAffected = await command.ExecuteNonQueryAsync();
+                var rowsAffected = await dbContext.Conversations
+                    .Where(c => c.SessionId == sessionId)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(c => c.Status, status)
+                        .SetProperty(c => c.UpdatedAt, DateTime.Now));
 
                 if (rowsAffected > 0)
                 {
@@ -149,20 +118,15 @@ namespace ClaudeCodeMAUI.Services
         /// </summary>
         public async Task UpdateLastActivityAsync(string sessionId)
         {
-            const string sql = @"
-                UPDATE conversations
-                SET last_activity = NOW(), updated_at = NOW()
-                WHERE session_id = @SessionId";
-
             try
             {
-                using var connection = new MySqlConnection(_connectionString);
-                await connection.OpenAsync();
+                using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
-                using var command = new MySqlCommand(sql, connection);
-                command.Parameters.AddWithValue("@SessionId", sessionId);
-
-                await command.ExecuteNonQueryAsync();
+                await dbContext.Conversations
+                    .Where(c => c.SessionId == sessionId)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(c => c.LastActivity, DateTime.Now)
+                        .SetProperty(c => c.UpdatedAt, DateTime.Now));
 
                 Log.Debug("Updated last_activity for session: {SessionId}", sessionId);
             }
@@ -179,21 +143,15 @@ namespace ClaudeCodeMAUI.Services
         /// </summary>
         public async Task UpdateWorkingDirectoryAsync(string sessionId, string workingDirectory)
         {
-            const string sql = @"
-                UPDATE conversations
-                SET working_directory = @WorkingDirectory, updated_at = NOW()
-                WHERE session_id = @SessionId";
-
             try
             {
-                using var connection = new MySqlConnection(_connectionString);
-                await connection.OpenAsync();
+                using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
-                using var command = new MySqlCommand(sql, connection);
-                command.Parameters.AddWithValue("@WorkingDirectory", workingDirectory);
-                command.Parameters.AddWithValue("@SessionId", sessionId);
-
-                var rowsAffected = await command.ExecuteNonQueryAsync();
+                var rowsAffected = await dbContext.Conversations
+                    .Where(c => c.SessionId == sessionId)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(c => c.WorkingDirectory, workingDirectory)
+                        .SetProperty(c => c.UpdatedAt, DateTime.Now));
 
                 if (rowsAffected > 0)
                 {
@@ -212,60 +170,8 @@ namespace ClaudeCodeMAUI.Services
             }
         }
 
-        /// <summary>
-        /// Retrieves all active or killed conversation sessions for recovery.
-        /// Called at app startup to recover sessions after crash/close.
-        /// </summary>
-        public async Task<List<ConversationSession>> GetActiveConversationsAsync()
-        {
-            const string sql = @"
-                SELECT id, session_id, tab_title, last_activity, status, created_at, updated_at, working_directory
-                FROM conversations
-                WHERE status IN ('active', 'killed')
-                ORDER BY last_activity DESC";
-
-            var sessions = new List<ConversationSession>();
-
-            try
-            {
-                using var connection = new MySqlConnection(_connectionString);
-                await connection.OpenAsync();
-
-                using var command = new MySqlCommand(sql, connection);
-                using var reader = await command.ExecuteReaderAsync();
-
-                while (await reader.ReadAsync())
-                {
-                    var tabTitleOrdinal = reader.GetOrdinal("tab_title");
-                    var workingDirOrdinal = reader.GetOrdinal("working_directory");
-
-                    var session = new ConversationSession
-                    {
-                        Id = reader.GetInt32(reader.GetOrdinal("id")),
-                        SessionId = reader.GetString(reader.GetOrdinal("session_id")),
-                        TabTitle = reader.IsDBNull(tabTitleOrdinal)
-                            ? "Untitled"
-                            : reader.GetString(tabTitleOrdinal),
-                        LastActivity = reader.GetDateTime(reader.GetOrdinal("last_activity")),
-                        Status = reader.GetString(reader.GetOrdinal("status")),
-                        CreatedAt = reader.GetDateTime(reader.GetOrdinal("created_at")),
-                        UpdatedAt = reader.GetDateTime(reader.GetOrdinal("updated_at")),
-                        WorkingDirectory = reader.IsDBNull(workingDirOrdinal)
-                            ? @"C:\Sources\ClaudeGui"
-                            : reader.GetString(workingDirOrdinal)
-                    };
-                    sessions.Add(session);
-                }
-
-                Log.Information("Retrieved {Count} active/killed sessions for recovery", sessions.Count);
-                return sessions;
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "Failed to retrieve active conversations");
-                throw;
-            }
-        }
+        // METODO LEGACY RIMOSSO - Usava ConversationSession e tabella conversations
+        // Sostituito da: GetOpenSessionsAsync() che usa la tabella Sessions e l'entity Session
 
         /// <summary>
         /// Batch updates multiple sessions to 'closed' status.
@@ -276,32 +182,15 @@ namespace ClaudeCodeMAUI.Services
             if (sessionIds == null || sessionIds.Count == 0)
                 return;
 
-            // Build parameterized IN clause
-            var parameters = new List<string>();
-            for (int i = 0; i < sessionIds.Count; i++)
-            {
-                parameters.Add($"@SessionId{i}");
-            }
-
-            var sql = $@"
-                UPDATE conversations
-                SET status = @Status, updated_at = NOW()
-                WHERE session_id IN ({string.Join(", ", parameters)})";
-
             try
             {
-                using var connection = new MySqlConnection(_connectionString);
-                await connection.OpenAsync();
+                using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
-                using var command = new MySqlCommand(sql, connection);
-                command.Parameters.AddWithValue("@Status", status);
-
-                for (int i = 0; i < sessionIds.Count; i++)
-                {
-                    command.Parameters.AddWithValue($"@SessionId{i}", sessionIds[i]);
-                }
-
-                var rowsAffected = await command.ExecuteNonQueryAsync();
+                var rowsAffected = await dbContext.Conversations
+                    .Where(c => sessionIds.Contains(c.SessionId))
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(c => c.Status, status)
+                        .SetProperty(c => c.UpdatedAt, DateTime.Now));
 
                 Log.Information("Batch updated {Count} sessions to status: {Status}", rowsAffected, status);
             }
@@ -319,17 +208,19 @@ namespace ClaudeCodeMAUI.Services
         /// <param name="content">Contenuto del messaggio (può includere markdown)</param>
         public async Task SaveMessageAsync(string conversationId, string role, string content)
         {
-            await SaveMessageAsync(conversationId, role, content, null, null);
+            await SaveMessageAsync(null, conversationId, role, content, null, null);
         }
 
         /// <summary>
         /// Salva un messaggio nel database con metadati completi dal file .jsonl
         /// Il numero di sequenza viene calcolato automaticamente come MAX(sequence) + 1 per la conversazione.
         /// </summary>
+        /// <param name="dbContext">DbContext opzionale. Se null, ne crea uno nuovo e salva subito. Se fornito, usa quello esistente senza SaveChanges (modalità batch).</param>
         public async Task SaveMessageAsync(
-            string conversationId,
-            string role,
-            string content,
+            ClaudeGuiDbContext? dbContext = null,
+            string conversationId = "",
+            string role = "",
+            string content = "",
             DateTime? timestamp = null,
             string? uuid = null,
             string? parentUuid = null,
@@ -341,136 +232,101 @@ namespace ClaudeCodeMAUI.Services
             string? requestId = null,
             string? model = null,
             string? usageJson = null,
-            string? messageType = null,
-            int? cache5mTokens = null,
-            int? cache1hTokens = null,
-            string? serviceTier = null)
+            string? messageType = null)
         {
-            // Prima ottieni il prossimo numero di sequenza per questa conversazione
-            const string getSequenceSql = @"
-                SELECT COALESCE(MAX(sequence), 0) + 1 AS next_sequence
-                FROM messages
-                WHERE conversation_id = @ConversationId";
-
-            const string insertSql = @"
-                INSERT INTO messages (
-                    conversation_id, role, content, timestamp, sequence,
-                    uuid, parent_uuid, version, git_branch, is_sidechain,
-                    user_type, cwd, request_id, model, usage_json, message_type,
-                    cache_5m_tokens, cache_1h_tokens, service_tier
-                )
-                VALUES (
-                    @ConversationId, @Role, @Content, @Timestamp, @Sequence,
-                    @Uuid, @ParentUuid, @Version, @GitBranch, @IsSidechain,
-                    @UserType, @Cwd, @RequestId, @Model, @UsageJson, @MessageType,
-                    @Cache5mTokens, @Cache1hTokens, @ServiceTier
-                )
-                ON DUPLICATE KEY UPDATE uuid = uuid";  // Ignora duplicati per uuid
+            // Determina se dobbiamo creare e gestire il nostro DbContext
+            bool shouldDisposeContext = (dbContext == null);
+            ClaudeGuiDbContext contextToUse = dbContext ?? await _dbContextFactory.CreateDbContextAsync();
 
             try
             {
-                using var connection = new MySqlConnection(_connectionString);
-                await connection.OpenAsync();
-
-                // Ottieni il prossimo numero di sequenza
-                int nextSequence;
-                using (var getSeqCommand = new MySqlCommand(getSequenceSql, connection))
+                // Verifica se il messaggio esiste già (ON DUPLICATE KEY UPDATE equivalente)
+                if (!string.IsNullOrEmpty(uuid))
                 {
-                    getSeqCommand.Parameters.AddWithValue("@ConversationId", conversationId);
-                    var result = await getSeqCommand.ExecuteScalarAsync();
-                    nextSequence = Convert.ToInt32(result);
+                    var exists = await contextToUse.Messages.AnyAsync(m => m.Uuid == uuid);
+                    if (exists)
+                    {
+                        //Log.Debug("Message with uuid {Uuid} already exists, skipping", uuid);
+                        return;
+                    }
                 }
 
-                // Inserisci il messaggio con tutti i metadati
-                using (var insertCommand = new MySqlCommand(insertSql, connection))
+                // Crea il nuovo messaggio
+                var message = new Message
                 {
-                    insertCommand.Parameters.AddWithValue("@ConversationId", conversationId);
-                    insertCommand.Parameters.AddWithValue("@Role", role);
-                    insertCommand.Parameters.AddWithValue("@Content", content);
-                    insertCommand.Parameters.AddWithValue("@Timestamp", timestamp ?? DateTime.UtcNow);
-                    insertCommand.Parameters.AddWithValue("@Sequence", nextSequence);
-                    insertCommand.Parameters.AddWithValue("@Uuid", uuid ?? (object)DBNull.Value);
-                    insertCommand.Parameters.AddWithValue("@ParentUuid", parentUuid ?? (object)DBNull.Value);
-                    insertCommand.Parameters.AddWithValue("@Version", version ?? (object)DBNull.Value);
-                    insertCommand.Parameters.AddWithValue("@GitBranch", gitBranch ?? (object)DBNull.Value);
-                    insertCommand.Parameters.AddWithValue("@IsSidechain", isSidechain ?? (object)DBNull.Value);
-                    insertCommand.Parameters.AddWithValue("@UserType", userType ?? (object)DBNull.Value);
-                    insertCommand.Parameters.AddWithValue("@Cwd", cwd ?? (object)DBNull.Value);
-                    insertCommand.Parameters.AddWithValue("@RequestId", requestId ?? (object)DBNull.Value);
-                    insertCommand.Parameters.AddWithValue("@Model", model ?? (object)DBNull.Value);
-                    insertCommand.Parameters.AddWithValue("@UsageJson", usageJson ?? (object)DBNull.Value);
-                    insertCommand.Parameters.AddWithValue("@MessageType", messageType ?? role);
-                    insertCommand.Parameters.AddWithValue("@Cache5mTokens", cache5mTokens ?? (object)DBNull.Value);
-                    insertCommand.Parameters.AddWithValue("@Cache1hTokens", cache1hTokens ?? (object)DBNull.Value);
-                    insertCommand.Parameters.AddWithValue("@ServiceTier", serviceTier ?? (object)DBNull.Value);
+                    ConversationId = conversationId,
+                    Role = role,
+                    Content = content,
+                    Timestamp = timestamp ?? DateTime.UtcNow,
+                    Uuid = uuid,
+                    ParentUuid = parentUuid,
+                    Version = version,
+                    GitBranch = gitBranch,
+                    IsSidechain = isSidechain,
+                    UserType = userType,
+                    Cwd = cwd,
+                    RequestId = requestId,
+                    Model = model,
+                    UsageJson = usageJson,
+                    MessageType = messageType ?? role
+                };
 
-                    await insertCommand.ExecuteNonQueryAsync();
+                contextToUse.Messages.Add(message);
 
-                    Log.Debug("Saved message: session={SessionId}, type={Type}, uuid={Uuid}, seq={Seq}",
-                             conversationId, messageType ?? role, uuid, nextSequence);
+                // Se abbiamo creato il context noi, salviamo subito (modalità standalone)
+                if (shouldDisposeContext)
+                {
+                    await contextToUse.SaveChangesAsync();
                 }
+
+                Log.Debug("Saved message: session={SessionId}, type={Type}, uuid={Uuid}",
+                         conversationId, messageType ?? role, uuid);
             }
             catch (Exception ex)
             {
                 Log.Error(ex, "Failed to save message for session: {SessionId}", conversationId);
                 // Non fare throw - il salvataggio dei messaggi è opzionale e non deve bloccare l'app
             }
+            finally
+            {
+                // Dispose del context solo se l'abbiamo creato noi
+                if (shouldDisposeContext && contextToUse != null)
+                {
+                    await contextToUse.DisposeAsync();
+                }
+            }
         }
 
         /// <summary>
-        /// Recupera gli ultimi N messaggi di una conversazione in ordine cronologico.
+        /// Recupera gli ultimi N messaggi di una conversazione in ordine cronologico usando Entity Framework Core.
         /// Usato per visualizzare la storia quando si riprende una sessione.
         /// </summary>
         /// <param name="conversationId">ID della sessione di conversazione</param>
         /// <param name="count">Numero massimo di messaggi da recuperare (default 10)</param>
-        /// <returns>Lista di messaggi ordinati cronologicamente (dal più vecchio al più recente)</returns>
-        public async Task<List<ConversationMessage>> GetLastMessagesAsync(string conversationId, int count = 10)
+        /// <returns>Lista di entity Message ordinati cronologicamente (dal più vecchio al più recente)</returns>
+        public async Task<List<Message>> GetLastMessagesAsync(string conversationId, int count = 10)
         {
             if (count <= 0)
             {
                 Log.Debug("GetLastMessagesAsync called with count={Count}, returning empty list", count);
-                return new List<ConversationMessage>();
+                return new List<Message>();
             }
-
-            // Usa una subquery per prendere gli ultimi N messaggi in ordine decrescente,
-            // poi riordina il risultato in ordine crescente per visualizzazione cronologica
-            const string sql = @"
-                SELECT id, conversation_id, role, content, timestamp, sequence
-                FROM (
-                    SELECT id, conversation_id, role, content, timestamp, sequence
-                    FROM messages
-                    WHERE conversation_id = @ConversationId
-                    ORDER BY sequence DESC
-                    LIMIT @Count
-                ) AS last_messages
-                ORDER BY sequence ASC";
-
-            var messages = new List<ConversationMessage>();
 
             try
             {
-                using var connection = new MySqlConnection(_connectionString);
-                await connection.OpenAsync();
+                using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
-                using var command = new MySqlCommand(sql, connection);
-                command.Parameters.AddWithValue("@ConversationId", conversationId);
-                command.Parameters.AddWithValue("@Count", count);
+                // Prendi gli ultimi N messaggi ordinati per Id decrescente (più recenti),
+                // poi invertili per ordine cronologico crescente (dal più vecchio al più recente)
+                var messages = await dbContext.Messages
+                    .AsNoTracking()
+                    .Where(m => m.ConversationId == conversationId)
+                    .OrderByDescending(m => m.Id)
+                    .Take(count)
+                    .ToListAsync();
 
-                using var reader = await command.ExecuteReaderAsync();
-
-                while (await reader.ReadAsync())
-                {
-                    var message = new ConversationMessage
-                    {
-                        Id = reader.GetInt32(reader.GetOrdinal("id")),
-                        ConversationId = reader.GetString(reader.GetOrdinal("conversation_id")),
-                        Role = reader.GetString(reader.GetOrdinal("role")),
-                        Content = reader.GetString(reader.GetOrdinal("content")),
-                        Timestamp = reader.GetDateTime(reader.GetOrdinal("timestamp")),
-                        Sequence = reader.GetInt32(reader.GetOrdinal("sequence"))
-                    };
-                    messages.Add(message);
-                }
+                // Inverti l'ordine per visualizzazione cronologica (dal più vecchio al più recente)
+                messages.Reverse();
 
                 Log.Information("Retrieved {Count} historical messages for session: {SessionId}", messages.Count, conversationId);
                 return messages;
@@ -478,63 +334,28 @@ namespace ClaudeCodeMAUI.Services
             catch (Exception ex)
             {
                 Log.Error(ex, "Failed to retrieve messages for session: {SessionId}", conversationId);
-                return new List<ConversationMessage>(); // Ritorna lista vuota in caso di errore
+                return new List<Message>(); // Ritorna lista vuota in caso di errore
             }
         }
 
-        // ===== NUOVI METODI PER TABELLA SESSIONS (Multi-Sessione con Tab) =====
+        // ===== METODI PER TABELLA SESSIONS (Multi-Sessione con Tab) =====
 
         /// <summary>
-        /// Rappresenta un record dalla tabella Sessions
+        /// Ottiene una sessione dal DB per session_id usando Entity Framework Core
         /// </summary>
-        public class SessionDbRow
+        /// <param name="sessionId">UUID della sessione da cercare</param>
+        /// <returns>Entity Session o null se non trovata</returns>
+        public async Task<Session?> GetSessionByIdAsync(string sessionId)
         {
-            public int Id { get; set; }
-            public string SessionId { get; set; } = string.Empty;
-            public string? Name { get; set; }
-            public string WorkingDirectory { get; set; } = string.Empty;
-            public string Status { get; set; } = "open";
-            public DateTime CreatedAt { get; set; }
-            public DateTime LastActivity { get; set; }
-            public bool Processed { get; set; } = false;
-            public bool Excluded { get; set; } = false;
-            public string? ExcludedReason { get; set; } = null;
-        }
-
-        /// <summary>
-        /// Ottiene una sessione dal DB per session_id
-        /// </summary>
-        public async Task<SessionDbRow?> GetSessionByIdAsync(string sessionId)
-        {
-            const string sql = "SELECT * FROM Sessions WHERE session_id = @SessionId";
-
             try
             {
-                using var connection = new MySqlConnection(_connectionString);
-                await connection.OpenAsync();
+                using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
-                using var command = new MySqlCommand(sql, connection);
-                command.Parameters.AddWithValue("@SessionId", sessionId);
+                var session = await dbContext.Sessions
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.SessionId == sessionId);
 
-                using var reader = await command.ExecuteReaderAsync();
-                if (await reader.ReadAsync())
-                {
-                    return new SessionDbRow
-                    {
-                        Id = reader.GetInt32("id"),
-                        SessionId = reader.GetString("session_id"),
-                        Name = reader.IsDBNull(reader.GetOrdinal("name")) ? null : reader.GetString("name"),
-                        WorkingDirectory = reader.GetString("working_directory"),
-                        Status = reader.GetString("status"),
-                        CreatedAt = reader.GetDateTime("created_at"),
-                        LastActivity = reader.GetDateTime("last_activity"),
-                        Processed = reader.GetBoolean("processed"),
-                        Excluded = reader.GetBoolean("excluded"),
-                        ExcludedReason = reader.IsDBNull(reader.GetOrdinal("excluded_reason")) ? null : reader.GetString("excluded_reason")
-                    };
-                }
-
-                return null;
+                return session;
             }
             catch (Exception ex)
             {
@@ -544,38 +365,20 @@ namespace ClaudeCodeMAUI.Services
         }
 
         /// <summary>
-        /// Ottiene tutte le sessioni aperte (status = 'open')
+        /// Ottiene tutte le sessioni aperte (status = 'open') usando Entity Framework Core
         /// </summary>
-        public async Task<List<SessionDbRow>> GetOpenSessionsAsync()
+        /// <returns>Lista di entity Session con status 'open', ordinate per ultima attività decrescente</returns>
+        public async Task<List<Session>> GetOpenSessionsAsync()
         {
-            const string sql = "SELECT * FROM Sessions WHERE status = 'open' ORDER BY last_activity DESC";
-
-            var sessions = new List<SessionDbRow>();
-
             try
             {
-                using var connection = new MySqlConnection(_connectionString);
-                await connection.OpenAsync();
+                using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
-                using var command = new MySqlCommand(sql, connection);
-                using var reader = await command.ExecuteReaderAsync();
-
-                while (await reader.ReadAsync())
-                {
-                    sessions.Add(new SessionDbRow
-                    {
-                        Id = reader.GetInt32("id"),
-                        SessionId = reader.GetString("session_id"),
-                        Name = reader.IsDBNull(reader.GetOrdinal("name")) ? null : reader.GetString("name"),
-                        WorkingDirectory = reader.GetString("working_directory"),
-                        Status = reader.GetString("status"),
-                        CreatedAt = reader.GetDateTime("created_at"),
-                        LastActivity = reader.GetDateTime("last_activity"),
-                        Processed = reader.GetBoolean("processed"),
-                        Excluded = reader.GetBoolean("excluded"),
-                        ExcludedReason = reader.IsDBNull(reader.GetOrdinal("excluded_reason")) ? null : reader.GetString("excluded_reason")
-                    });
-                }
+                var sessions = await dbContext.Sessions
+                    .AsNoTracking()
+                    .Where(s => s.Status == "open")
+                    .OrderByDescending(s => s.LastActivity)
+                    .ToListAsync();
 
                 Log.Information("Retrieved {Count} open sessions", sessions.Count);
                 return sessions;
@@ -583,44 +386,26 @@ namespace ClaudeCodeMAUI.Services
             catch (Exception ex)
             {
                 Log.Error(ex, "Failed to get open sessions");
-                return sessions;
+                return new List<Session>();
             }
         }
 
         /// <summary>
-        /// Ottiene tutte le sessioni chiuse (status = 'closed') non escluse.
+        /// Ottiene tutte le sessioni chiuse (status = 'closed') non escluse usando Entity Framework Core.
         /// Le sessioni escluse (excluded = TRUE) non vengono restituite.
         /// </summary>
-        public async Task<List<SessionDbRow>> GetClosedSessionsAsync()
+        /// <returns>Lista di entity Session chiuse e non escluse, ordinate per ultima attività decrescente</returns>
+        public async Task<List<Session>> GetClosedSessionsAsync()
         {
-            const string sql = "SELECT * FROM Sessions WHERE status = 'closed' AND excluded = FALSE ORDER BY last_activity DESC";
-
-            var sessions = new List<SessionDbRow>();
-
             try
             {
-                using var connection = new MySqlConnection(_connectionString);
-                await connection.OpenAsync();
+                using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
-                using var command = new MySqlCommand(sql, connection);
-                using var reader = await command.ExecuteReaderAsync();
-
-                while (await reader.ReadAsync())
-                {
-                    sessions.Add(new SessionDbRow
-                    {
-                        Id = reader.GetInt32("id"),
-                        SessionId = reader.GetString("session_id"),
-                        Name = reader.IsDBNull(reader.GetOrdinal("name")) ? null : reader.GetString("name"),
-                        WorkingDirectory = reader.GetString("working_directory"),
-                        Status = reader.GetString("status"),
-                        CreatedAt = reader.GetDateTime("created_at"),
-                        LastActivity = reader.GetDateTime("last_activity"),
-                        Processed = reader.GetBoolean("processed"),
-                        Excluded = reader.GetBoolean("excluded"),
-                        ExcludedReason = reader.IsDBNull(reader.GetOrdinal("excluded_reason")) ? null : reader.GetString("excluded_reason")
-                    });
-                }
+                var sessions = await dbContext.Sessions
+                    .AsNoTracking()
+                    .Where(s => s.Status == "closed" && s.Excluded == false)
+                    .OrderByDescending(s => s.LastActivity)
+                    .ToListAsync();
 
                 Log.Information("Retrieved {Count} closed non-excluded sessions", sessions.Count);
                 return sessions;
@@ -628,7 +413,7 @@ namespace ClaudeCodeMAUI.Services
             catch (Exception ex)
             {
                 Log.Error(ex, "Failed to get closed sessions");
-                return sessions;
+                return new List<Session>();
             }
         }
 
@@ -641,25 +426,18 @@ namespace ClaudeCodeMAUI.Services
         /// <param name="excludedReason">Motivo dell'esclusione (es: "summary", "file-history-snapshot"), null se non esclusa</param>
         public async Task MarkSessionAsProcessedAsync(string sessionId, bool isExcluded, string? excludedReason = null)
         {
-            const string sql = @"
-                UPDATE Sessions
-                SET processed = TRUE, excluded = @IsExcluded, excluded_reason = @ExcludedReason
-                WHERE session_id = @SessionId";
-
             try
             {
-                using var connection = new MySqlConnection(_connectionString);
-                await connection.OpenAsync();
+                using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
-                using var command = new MySqlCommand(sql, connection);
-                command.Parameters.AddWithValue("@SessionId", sessionId);
-                command.Parameters.AddWithValue("@IsExcluded", isExcluded);
-                command.Parameters.AddWithValue("@ExcludedReason", excludedReason ?? (object)DBNull.Value);
-
-                var rowsAffected = await command.ExecuteNonQueryAsync();
-
-                if (rowsAffected > 0)
+                var session = await dbContext.Sessions.FirstOrDefaultAsync(s => s.SessionId == sessionId);
+                if (session != null)
                 {
+                    session.Processed = true;
+                    session.Excluded = isExcluded;
+                    session.ExcludedReason = excludedReason;
+                    await dbContext.SaveChangesAsync();
+
                     Log.Debug("Marked session as processed: {SessionId}, Excluded: {IsExcluded}, Reason: {Reason}",
                              sessionId, isExcluded, excludedReason ?? "N/A");
                 }
@@ -681,15 +459,12 @@ namespace ClaudeCodeMAUI.Services
         /// </summary>
         public async Task ResetProcessedFlagAsync()
         {
-            const string sql = "UPDATE Sessions SET processed = FALSE";
-
             try
             {
-                using var connection = new MySqlConnection(_connectionString);
-                await connection.OpenAsync();
+                using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
-                using var command = new MySqlCommand(sql, connection);
-                var rowsAffected = await command.ExecuteNonQueryAsync();
+                var rowsAffected = await dbContext.Sessions
+                    .ExecuteUpdateAsync(setters => setters.SetProperty(s => s.Processed, false));
 
                 Log.Information("Reset processed flag for {Count} sessions", rowsAffected);
             }
@@ -718,29 +493,13 @@ namespace ClaudeCodeMAUI.Services
 
             try
             {
-                using var connection = new MySqlConnection(_connectionString);
-                await connection.OpenAsync();
+                using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
                 // Prima: ottieni lista di sessioni orfane per logging
-                var orphanedSessionsSql = $@"
-                    SELECT session_id, name, working_directory
-                    FROM Sessions
-                    WHERE session_id NOT IN ({string.Join(",", validSessionIds.Select(id => $"'{id}'"))})";
-
-                var orphanedSessions = new List<(string sessionId, string name, string workingDir)>();
-
-                using (var selectCommand = new MySqlCommand(orphanedSessionsSql, connection))
-                {
-                    using var reader = await selectCommand.ExecuteReaderAsync();
-                    while (await reader.ReadAsync())
-                    {
-                        orphanedSessions.Add((
-                            reader.GetString("session_id"),
-                            reader.IsDBNull(reader.GetOrdinal("name")) ? "(no name)" : reader.GetString("name"),
-                            reader.GetString("working_directory")
-                        ));
-                    }
-                }
+                var orphanedSessions = await dbContext.Sessions
+                    .Where(s => !validSessionIds.Contains(s.SessionId))
+                    .Select(s => new { s.SessionId, s.Name, s.WorkingDirectory })
+                    .ToListAsync();
 
                 if (orphanedSessions.Count == 0)
                 {
@@ -753,18 +512,15 @@ namespace ClaudeCodeMAUI.Services
                 foreach (var session in orphanedSessions)
                 {
                     Log.Warning("  - Removing: {SessionId} | Name: {Name} | WorkingDir: {WorkingDir}",
-                        session.sessionId, session.name, session.workingDir);
+                        session.SessionId, session.Name ?? "(no name)", session.WorkingDirectory);
                 }
 
                 // DELETE: rimuovi sessioni orfane
                 // NOTA: I messaggi associati verranno rimossi automaticamente tramite CASCADE DELETE
                 // se la foreign key è configurata con ON DELETE CASCADE
-                var deleteSql = $@"
-                    DELETE FROM Sessions
-                    WHERE session_id NOT IN ({string.Join(",", validSessionIds.Select(id => $"'{id}'"))})";
-
-                using var deleteCommand = new MySqlCommand(deleteSql, connection);
-                var rowsDeleted = await deleteCommand.ExecuteNonQueryAsync();
+                var rowsDeleted = await dbContext.Sessions
+                    .Where(s => !validSessionIds.Contains(s.SessionId))
+                    .ExecuteDeleteAsync();
 
                 Log.Information("Garbage collection completed: removed {Count} orphaned sessions", rowsDeleted);
                 return rowsDeleted;
@@ -787,34 +543,34 @@ namespace ClaudeCodeMAUI.Services
         /// <returns>True se la sessione è stata inserita, False se esisteva già</returns>
         public async Task<bool> InsertSessionAsync(string sessionId, string? name, string workingDirectory, DateTime? lastActivity = null)
         {
-            const string sql = @"
-                INSERT IGNORE INTO Sessions (session_id, name, working_directory, status, last_activity)
-                VALUES (@SessionId, @Name, @WorkingDirectory, 'closed', @LastActivity)";
-
             try
             {
-                using var connection = new MySqlConnection(_connectionString);
-                await connection.OpenAsync();
+                using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
-                using var command = new MySqlCommand(sql, connection);
-                command.Parameters.AddWithValue("@SessionId", sessionId);
-                command.Parameters.AddWithValue("@Name", string.IsNullOrWhiteSpace(name) ? (object)DBNull.Value : name);
-                command.Parameters.AddWithValue("@WorkingDirectory", workingDirectory);
-                command.Parameters.AddWithValue("@LastActivity", lastActivity ?? DateTime.Now);
-
-                var rowsAffected = await command.ExecuteNonQueryAsync();
-
-                if (rowsAffected > 0)
-                {
-                    Log.Debug("Inserted new session: {SessionId} - Name: {Name}, WorkingDir: {WorkingDir}, LastActivity: {LastActivity}",
-                        sessionId, name ?? "(empty)", workingDirectory, lastActivity ?? DateTime.Now);
-                    return true;
-                }
-                else
+                // Verifica se la sessione esiste già
+                var exists = await dbContext.Sessions.AnyAsync(s => s.SessionId == sessionId);
+                if (exists)
                 {
                     Log.Debug("Session already exists: {SessionId}", sessionId);
                     return false;
                 }
+
+                // Crea nuova sessione
+                var session = new Session
+                {
+                    SessionId = sessionId,
+                    Name = string.IsNullOrWhiteSpace(name) ? null : name,
+                    WorkingDirectory = workingDirectory,
+                    Status = "closed",
+                    LastActivity = lastActivity ?? DateTime.Now
+                };
+
+                dbContext.Sessions.Add(session);
+                await dbContext.SaveChangesAsync();
+
+                Log.Debug("Inserted new session: {SessionId} - Name: {Name}, WorkingDir: {WorkingDir}, LastActivity: {LastActivity}",
+                    sessionId, name ?? "(empty)", workingDirectory, lastActivity ?? DateTime.Now);
+                return true;
             }
             catch (Exception ex)
             {
@@ -828,20 +584,22 @@ namespace ClaudeCodeMAUI.Services
         /// </summary>
         public async Task UpdateSessionNameAsync(string sessionId, string name)
         {
-            const string sql = "UPDATE Sessions SET name = @Name WHERE session_id = @SessionId";
-
             try
             {
-                using var connection = new MySqlConnection(_connectionString);
-                await connection.OpenAsync();
+                using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
-                using var command = new MySqlCommand(sql, connection);
-                command.Parameters.AddWithValue("@Name", name);
-                command.Parameters.AddWithValue("@SessionId", sessionId);
+                var session = await dbContext.Sessions.FirstOrDefaultAsync(s => s.SessionId == sessionId);
+                if (session != null)
+                {
+                    session.Name = name;
+                    await dbContext.SaveChangesAsync();
 
-                await command.ExecuteNonQueryAsync();
-
-                Log.Information("Updated session name: {SessionId} → {Name}", sessionId, name);
+                    Log.Information("Updated session name: {SessionId} → {Name}", sessionId, name);
+                }
+                else
+                {
+                    Log.Warning("Session not found for name update: {SessionId}", sessionId);
+                }
             }
             catch (Exception ex)
             {
@@ -855,20 +613,22 @@ namespace ClaudeCodeMAUI.Services
         /// </summary>
         public async Task UpdateSessionStatusAsync(string sessionId, string status)
         {
-            const string sql = "UPDATE Sessions SET status = @Status WHERE session_id = @SessionId";
-
             try
             {
-                using var connection = new MySqlConnection(_connectionString);
-                await connection.OpenAsync();
+                using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
-                using var command = new MySqlCommand(sql, connection);
-                command.Parameters.AddWithValue("@Status", status);
-                command.Parameters.AddWithValue("@SessionId", sessionId);
+                var session = await dbContext.Sessions.FirstOrDefaultAsync(s => s.SessionId == sessionId);
+                if (session != null)
+                {
+                    session.Status = status;
+                    await dbContext.SaveChangesAsync();
 
-                await command.ExecuteNonQueryAsync();
-
-                Log.Information("Updated session status: {SessionId} → {Status}", sessionId, status);
+                    Log.Information("Updated session status: {SessionId} → {Status}", sessionId, status);
+                }
+                else
+                {
+                    Log.Warning("Session not found for status update: {SessionId}", sessionId);
+                }
             }
             catch (Exception ex)
             {
@@ -1049,6 +809,7 @@ namespace ClaudeCodeMAUI.Services
                 int lineNumber = 0;
 
                 using var reader = new System.IO.StreamReader(jsonlFilePath);
+                using var dbContext = await _dbContextFactory.CreateDbContextAsync();
                 while (!reader.EndOfStream)
                 {
                     // Check cancellation
@@ -1067,9 +828,11 @@ namespace ClaudeCodeMAUI.Services
                     var root = json.RootElement;
 
                     // RILEVA CAMPI SCONOSCIUTI - CHIEDE ALL'UTENTE COSA FARE
-                    var unknownFields = DetectUnknownFields(root, knownFields);
-                    if (unknownFields.Count > 0)
+                    //var unknownFields = DetectUnknownFields(root, knownFields);
+                    List<String>? unknownFields = []; //Disabilitato permanentemente
+                    if (unknownFields.Count > 0 )  
                     {
+                        string contentunknown = ExtractBasicContent(root);
                         var messageUuid = root.TryGetProperty("uuid", out var u) ? u.GetString() : "unknown";
                         result.UnknownFieldsByMessage[messageUuid] = unknownFields;
                         result.SkippedCount++;
@@ -1104,7 +867,7 @@ namespace ClaudeCodeMAUI.Services
                     // Verifica se già presente (via uuid)
                     if (!string.IsNullOrEmpty(uuid) && await MessageExistsByUuidAsync(uuid))
                     {
-                        Log.Debug("Message with UUID {Uuid} already exists, skipping", uuid);
+                        //Log.Debug("Message with UUID {Uuid} already exists, skipping", uuid);
                         progressCallback?.Report((lineNumber, totalLines));
                         continue;
                     }
@@ -1124,9 +887,6 @@ namespace ClaudeCodeMAUI.Services
                     string? requestId = null;
                     string? model = null;
                     string? usageJson = null;
-                    int? cache5mTokens = null;
-                    int? cache1hTokens = null;
-                    string? serviceTier = null;
 
                     // Per messaggi assistant, estrai requestId, model e usage
                     if (root.TryGetProperty("message", out var messageProp))
@@ -1140,27 +900,15 @@ namespace ClaudeCodeMAUI.Services
                         if (messageProp.TryGetProperty("usage", out var usageProp))
                         {
                             usageJson = usageProp.GetRawText();
-
-                            // Estrai campi cache Anthropic
-                            if (usageProp.TryGetProperty("cache_creation", out var cacheCreation))
-                            {
-                                if (cacheCreation.TryGetProperty("ephemeral_5m_input_tokens", out var cache5m))
-                                    cache5mTokens = cache5m.GetInt32();
-
-                                if (cacheCreation.TryGetProperty("ephemeral_1h_input_tokens", out var cache1h))
-                                    cache1hTokens = cache1h.GetInt32();
-                            }
-
-                            if (usageProp.TryGetProperty("service_tier", out var tierProp))
-                                serviceTier = tierProp.GetString();
                         }
                     }
 
                     // Estrai contenuto
                     string content = ExtractBasicContent(root);
-
-                    // Salva nel DB con TUTTI i metadata
+                   
+                    // Salva nel DB con TUTTI i metadata (modalità batch: passa dbContext)
                     await SaveMessageAsync(
+                        dbContext,
                         sessionId,
                         type ?? "unknown",
                         content,
@@ -1175,17 +923,14 @@ namespace ClaudeCodeMAUI.Services
                         requestId,
                         model,
                         usageJson,
-                        type, // messageType = type
-                        cache5mTokens,
-                        cache1hTokens,
-                        serviceTier);
+                        type); // messageType = type
 
                     result.ImportedCount++;
 
                     // Report progress
                     progressCallback?.Report((lineNumber, totalLines));
                 }
-
+                await dbContext.SaveChangesAsync();
                 Log.Information("Import completed: {Imported} imported, {Skipped} skipped, {UnknownCount} with unknown fields",
                     result.ImportedCount, result.SkippedCount, result.MessagesWithUnknownFieldsCount);
 
@@ -1205,16 +950,8 @@ namespace ClaudeCodeMAUI.Services
 
         private async Task<bool> MessageExistsByUuidAsync(string uuid)
         {
-            const string sql = "SELECT COUNT(*) FROM messages WHERE uuid = @Uuid";
-
-            await using var connection = new MySqlConnection(_connectionString);
-            await connection.OpenAsync();
-
-            await using var command = new MySqlCommand(sql, connection);
-            command.Parameters.AddWithValue("@Uuid", uuid);
-
-            var count = Convert.ToInt32(await command.ExecuteScalarAsync());
-            return count > 0;
+            using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+            return await dbContext.Messages.AnyAsync(m => m.Uuid == uuid);
         }
 
         private string ExtractBasicContent(System.Text.Json.JsonElement root)
@@ -1237,6 +974,11 @@ namespace ClaudeCodeMAUI.Services
                                 if (item.TryGetProperty("text", out var textProp))
                                 {
                                     sb.AppendLine(textProp.GetString());
+                                }
+                                else
+                                {
+                                    var value = item.GetRawText();
+                                    sb.AppendLine(value);
                                 }
                             }
                             return sb.ToString();

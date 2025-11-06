@@ -1,5 +1,6 @@
 using ClaudeCodeMAUI.Extensions;
 using ClaudeCodeMAUI.Models;
+using ClaudeCodeMAUI.Models.Entities;
 using ClaudeCodeMAUI.Services;
 using Serilog;
 using System.Collections.ObjectModel;
@@ -35,19 +36,19 @@ namespace ClaudeCodeMAUI.Views
         }
 
         /// <summary>
-        /// Sessione selezionata dall'utente
+        /// Sessione selezionata dall'utente (entity Session)
         /// </summary>
-        public DbService.SessionDbRow? SelectedSession { get; private set; }
+        public Session? SelectedSession { get; private set; }
 
         /// <summary>
         /// TaskCompletionSource per gestire l'attesa della selezione
         /// </summary>
-        private TaskCompletionSource<DbService.SessionDbRow?> _selectionCompletionSource = new TaskCompletionSource<DbService.SessionDbRow?>();
+        private TaskCompletionSource<Session?> _selectionCompletionSource = new TaskCompletionSource<Session?>();
 
         /// <summary>
         /// Task che completa quando l'utente seleziona una sessione o annulla
         /// </summary>
-        public Task<DbService.SessionDbRow?> SelectionTask => _selectionCompletionSource.Task;
+        public Task<Session?> SelectionTask => _selectionCompletionSource.Task;
 
         /// <summary>
         /// Classe helper per visualizzare sessioni nella lista
@@ -61,7 +62,7 @@ namespace ClaudeCodeMAUI.Views
             public string FormattedFileSize { get; set; } = string.Empty;
             public string Icon { get; set; } = string.Empty;
             public bool IsNewSessionPlaceholder { get; set; } = false;
-            public DbService.SessionDbRow? SessionData { get; set; }
+            public Session? SessionData { get; set; }
         }
 
         public SessionSelectorPage(SessionScannerService sessionScanner, DbService dbService)
@@ -301,11 +302,54 @@ namespace ClaudeCodeMAUI.Views
                 Log.Information("Session double-tapped: {SessionId}, Name: {DisplayName}",
                     selectedItem.SessionId, selectedItem.DisplayName);
 
-                // Imposta la sessione selezionata
+                // VERIFICA: Se il nome è null, chiedi di assegnarlo PRIMA di procedere
+                if (string.IsNullOrWhiteSpace(selectedItem.SessionData.Name))
+                {
+                    Log.Information("Session {SessionId} has no name, showing AssignNameDialog", selectedItem.SessionId);
+
+                    // Mostra il dialog per assegnare un nome
+                    var assignNameDialog = new AssignNameDialog(selectedItem.SessionId, _dbService);
+                    await Navigation.PushModalAsync(new NavigationPage(assignNameDialog));
+
+                    // Aspetta che il dialog completi (utente preme Salva o Annulla)
+                    await assignNameDialog.CompletionTask;
+
+                    // Se il nome NON è stato assegnato, interrompi (non chiudere la finestra di selezione)
+                    if (!assignNameDialog.WasNameAssigned)
+                    {
+                        Log.Information("Name not assigned for session {SessionId}, keeping selector open", selectedItem.SessionId);
+                        return; // Rimani nella finestra di selezione
+                    }
+
+                    // Nome assegnato con successo, ricarica i dati della sessione dal database
+                    var sessionIdToReload = selectedItem.SessionId;
+                    Log.Information("Name assigned for session {SessionId}, reloading session data from DB", sessionIdToReload);
+
+                    // Ricarica la sessione specifica dal database
+                    var updatedSessionData = await _dbService.GetSessionByIdAsync(sessionIdToReload);
+                    if (updatedSessionData == null)
+                    {
+                        Log.Error("Session {SessionId} not found in database after name assignment", sessionIdToReload);
+                        await this.DisplaySelectableAlert("Errore", "Impossibile ricaricare i dati della sessione dal database.", "OK");
+                        return; // Rimani nel selector
+                    }
+
+                    // Aggiorna i dati della sessione nell'oggetto selectedItem
+                    selectedItem.SessionData = updatedSessionData;
+                    selectedItem.DisplayName = updatedSessionData.Name ?? "";
+                    Log.Information("Session data reloaded with name: {Name}", selectedItem.DisplayName);
+
+                    // Ricarica anche la lista UI in background per mantenerla aggiornata
+                    _ = LoadSessionsAsync();
+                }
+
+                // Procedi con la selezione della sessione
                 SelectedSession = selectedItem.SessionData;
 
                 // Completa il Task con la sessione selezionata
                 _selectionCompletionSource.TrySetResult(selectedItem.SessionData);
+
+                Log.Information("Session {SessionId} selected, closing selector", selectedItem.SessionId);
 
                 // Chiudi la pagina
                 await Navigation.PopModalAsync();
@@ -505,6 +549,9 @@ namespace ClaudeCodeMAUI.Views
                     // Mostra il dialog per assegnare un nome
                     var assignNameDialog = new AssignNameDialog(sessionItem.SessionId, _dbService);
                     await Navigation.PushModalAsync(new NavigationPage(assignNameDialog));
+
+                    // Aspetta che il dialog completi
+                    await assignNameDialog.CompletionTask;
 
                     // Se il nome è stato assegnato, ricarica la lista
                     if (assignNameDialog.WasNameAssigned)

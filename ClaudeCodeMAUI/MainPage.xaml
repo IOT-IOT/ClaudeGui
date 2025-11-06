@@ -104,7 +104,7 @@
                                  VerticalOptions="Center"
                                  HorizontalOptions="Center"
                                  Spacing="20">
-                <Label Text="📂 Nessuna Sessione Aperta"
+                <Label Text="{Binding NoSessionsPlaceholderText}"
                        FontSize="24"
                        FontAttributes="Bold"
                        HorizontalOptions="Center"

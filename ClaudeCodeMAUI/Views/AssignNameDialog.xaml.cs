@@ -12,6 +12,7 @@ namespace ClaudeCodeMAUI.Views
     {
         private readonly string _sessionId;
         private readonly DbService _dbService;
+        private readonly TaskCompletionSource<bool> _completionSource = new TaskCompletionSource<bool>();
 
         /// <summary>
         /// Indica se l'utente ha assegnato un nome (true) o ha cancellato (false)
@@ -22,6 +23,11 @@ namespace ClaudeCodeMAUI.Views
         /// Nome assegnato alla sessione (null se l'utente ha cancellato)
         /// </summary>
         public string? AssignedName { get; private set; }
+
+        /// <summary>
+        /// Task che completa quando il dialog viene chiuso (con o senza assegnazione nome)
+        /// </summary>
+        public Task<bool> CompletionTask => _completionSource.Task;
 
         public AssignNameDialog(string sessionId, DbService dbService)
         {
@@ -85,6 +91,9 @@ namespace ClaudeCodeMAUI.Views
                 WasNameAssigned = true;
                 AssignedName = name;
 
+                // Segnala completamento con successo
+                _completionSource.TrySetResult(true);
+
                 // Chiudi il dialog
                 await Navigation.PopModalAsync();
             }
@@ -104,6 +113,10 @@ namespace ClaudeCodeMAUI.Views
             Log.Information("Assign name dialog cancelled by user");
             WasNameAssigned = false;
             AssignedName = null;
+
+            // Segnala completamento con cancellazione
+            _completionSource.TrySetResult(false);
+
             await Navigation.PopModalAsync();
         }
     }

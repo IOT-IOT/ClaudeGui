@@ -3,13 +3,14 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using ClaudeCodeMAUI.Services;
+using ClaudeCodeMAUI.Models.Entities;
 
 namespace ClaudeCodeMAUI.Models
 {
     /// <summary>
     /// Rappresenta un singolo tab nella TabView multi-sessione.
     /// Ogni tab corrisponde a una sessione Claude Code attiva.
-    /// Combina informazioni di sessione, processo manager, e stato runtime.
+    /// Combina informazioni di sessione (entity Session), metriche runtime (SessionRuntimeMetrics), e stato processo.
     /// </summary>
     public class SessionTabItem : INotifyPropertyChanged
     {
@@ -35,15 +36,20 @@ namespace ClaudeCodeMAUI.Models
         // ===== Runtime State =====
 
         /// <summary>
-        /// Oggetto sessione con metriche e metadati runtime
-        /// (Cost, tokens, tools used, ecc.)
+        /// Metriche runtime della sessione (costo, token, tool utilizzati, ecc.)
+        /// NON persistite nel database - solo per la sessione corrente in memoria
         /// </summary>
-        public ConversationSession Session { get; set; } = new ConversationSession();
+        public SessionRuntimeMetrics RuntimeMetrics { get; set; } = new SessionRuntimeMetrics();
 
         /// <summary>
         /// Process manager che gestisce il processo Claude per questa sessione
         /// </summary>
         public ClaudeProcessManager? ProcessManager { get; set; }
+
+        /// <summary>
+        /// Riferimento al contenuto del tab (SessionTabContent) che contiene la WebView
+        /// </summary>
+        public Views.SessionTabContent? TabContent { get; set; }
 
         /// <summary>
         /// Collezione HTML renderizzata per mostrare la conversazione
