@@ -760,13 +760,19 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
             // Invia il messaggio al processo Claude
             await _currentTab.ProcessManager.SendMessageAsync(message);
 
+            // Mostra SUBITO il messaggio utente nella WebView (feedback immediato)
+            await AppendMessageToWebViewAsync(_currentTab, "user", message);
+
+            // Mostra SUBITO "In attesa di risposta..." (feedback che Claude sta elaborando)
+            await AddWaitingMessageToWebViewAsync(_currentTab);
+
             // Il messaggio verrà salvato nel database quando Claude Code lo scrive nel .jsonl
             // (via OnJsonLineReceived → SaveMessageFromJson)
 
             // Pulisci l'input
             InputEditor.Text = string.Empty;
 
-            Log.Debug("Message sent: {Length} chars", message.Length);
+            Log.Debug("Message sent: {Length} chars. User message and waiting indicator displayed.", message.Length);
         }
         catch (Exception ex)
         {
@@ -1009,6 +1015,12 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
             // PRIMA: Aggiorna WebView immediatamente (dal JSON già in memoria - nessun round-trip DB)
             if (type == "user" || type == "assistant")
             {
+                // Se è una risposta assistant, rimuovi il messaggio "In attesa di risposta..."
+                if (type == "assistant")
+                {
+                    await RemoveWaitingMessageFromWebViewAsync(tabItem);
+                }
+
                 var content = ExtractBasicContent(root);
                 if (!string.IsNullOrWhiteSpace(content))
                 {
@@ -1099,6 +1111,58 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
         catch (Exception ex)
         {
             Log.Error(ex, "Failed to append message to WebView for session {SessionId}", tabItem?.SessionId);
+        }
+    }
+
+    /// <summary>
+    /// Aggiunge il messaggio "In attesa di risposta..." alla WebView.
+    /// Mostra feedback immediato all'utente dopo l'invio del messaggio.
+    /// </summary>
+    private async Task AddWaitingMessageToWebViewAsync(SessionTabItem tabItem)
+    {
+        try
+        {
+            if (tabItem?.TabContent?.WebView == null)
+            {
+                Log.Warning("Cannot add waiting message: tab or WebView is null");
+                return;
+            }
+
+            await MainThread.InvokeOnMainThreadAsync(async () =>
+            {
+                var result = await tabItem.TabContent.WebView.EvaluateJavaScriptAsync("addWaitingMessage()");
+                Log.Debug("Waiting message added: {Result}", result ?? "null");
+            });
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to add waiting message to WebView");
+        }
+    }
+
+    /// <summary>
+    /// Rimuove il messaggio "In attesa di risposta..." dalla WebView.
+    /// Chiamato quando arriva la risposta reale da stdout.
+    /// </summary>
+    private async Task RemoveWaitingMessageFromWebViewAsync(SessionTabItem tabItem)
+    {
+        try
+        {
+            if (tabItem?.TabContent?.WebView == null)
+            {
+                Log.Warning("Cannot remove waiting message: tab or WebView is null");
+                return;
+            }
+
+            await MainThread.InvokeOnMainThreadAsync(async () =>
+            {
+                var result = await tabItem.TabContent.WebView.EvaluateJavaScriptAsync("removeWaitingMessage()");
+                Log.Debug("Waiting message removed: {Result}", result ?? "null");
+            });
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to remove waiting message from WebView");
         }
     }
 

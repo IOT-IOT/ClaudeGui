@@ -353,6 +353,35 @@ namespace ClaudeCodeMAUI.Utilities
             window.scrollTo({{ top: document.body.scrollHeight, behavior: 'smooth' }});
         }}
 
+        // ===== Gestione messaggio waiting =====
+        function addWaitingMessage() {{
+            const container = document.getElementById('conversation-container');
+            if (!container) return 'ERROR: container not found';
+
+            // Rimuovi eventuali waiting message esistenti (safety)
+            removeWaitingMessage();
+
+            // Crea il div del messaggio waiting con ID univoco
+            const waitingHtml = '<div id=""waiting-message"" style=""background-color: {assistantMsgBg}; padding: 8px 4px; margin: 10px 0; opacity: 0.6; font-style: italic;"">' +
+                '⏳ In attesa di risposta...' +
+                '</div>';
+
+            container.insertAdjacentHTML('beforeend', waitingHtml);
+            window.scrollTo({{ top: document.body.scrollHeight, behavior: 'smooth' }});
+
+            return 'OK: waiting message added';
+        }}
+
+        function removeWaitingMessage() {{
+            const waitingElement = document.getElementById('waiting-message');
+            if (waitingElement) {{
+                waitingElement.remove();
+                console.log('Waiting message removed');
+                return 'OK: waiting message removed';
+            }}
+            return 'OK: no waiting message found';
+        }}
+
         // ===== V3: Append HTML usando Base64 encoding =====
         function appendHtmlBase64(base64Html) {{
             try {{

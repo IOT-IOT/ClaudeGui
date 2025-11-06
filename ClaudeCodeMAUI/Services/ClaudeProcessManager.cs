@@ -133,6 +133,8 @@ namespace ClaudeCodeMAUI.Services
             args.Append("--output-format stream-json ");
             args.Append("--verbose ");
             args.Append("--dangerously-skip-permissions ");
+            //args.Append("--include-partial-messages ");
+            
             //args.Append("--context-mode auto-compact "); // Gestione automatica del contesto con compattazione
 
             if (!string.IsNullOrEmpty(_sessionId))
