@@ -383,7 +383,9 @@ namespace ClaudeCodeMAUI.Services
         public bool IsRunning => _isRunning;
 
         /// <summary>
-        /// IDisposable implementation
+        /// IDisposable implementation.
+        /// Rilascia tutte le risorse, termina il processo se necessario,
+        /// e rimuove tutti gli event subscribers per prevenire memory leak.
         /// </summary>
         public void Dispose()
         {
@@ -391,6 +393,13 @@ namespace ClaudeCodeMAUI.Services
             {
                 Kill();
             }
+
+            // Pulisci tutti gli event subscribers per prevenire memory leak
+            // e chiamate a handler dopo il dispose
+            JsonLineReceived = null;
+            ProcessCompleted = null;
+            ErrorReceived = null;
+            IsRunningChanged = null;
 
             _stdinWriter?.Dispose();
             _process?.Dispose();
