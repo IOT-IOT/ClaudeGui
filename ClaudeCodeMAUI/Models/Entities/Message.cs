@@ -26,14 +26,6 @@ public class Message
     public string ConversationId { get; set; } = null!;
 
     /// <summary>
-    /// Ruolo del messaggio: 'user', 'assistant', 'system', ecc.
-    /// </summary>
-    [Required]
-    [StringLength(50)]
-    [Column("role")]
-    public string Role { get; set; } = null!;
-
-    /// <summary>
     /// Contenuto testuale del messaggio
     /// </summary>
     [Required]
@@ -114,11 +106,12 @@ public class Message
     public string? UsageJson { get; set; }
 
     /// <summary>
-    /// Tipo di messaggio (duplicato di 'role' per compatibilità)
+    /// Tipo di messaggio: 'user', 'assistant', 'system', ecc.
     /// </summary>
+    [Required]
     [StringLength(50)]
     [Column("message_type")]
-    public string? MessageType { get; set; }
+    public string MessageType { get; set; } = null!;
 
     /// <summary>
     /// Navigation property: sessione di appartenenza

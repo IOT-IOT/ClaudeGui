@@ -312,11 +312,11 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
 
                     foreach (var message in messages)
                     {
-                        if (message.Role == "user")
+                        if (message.MessageType == "user")
                         {
                             conversationHtml.AppendLine(renderer.RenderUserMessage(message.Content));
                         }
-                        else if (message.Role == "assistant")
+                        else if (message.MessageType == "assistant")
                         {
                             conversationHtml.AppendLine(renderer.RenderAssistantMessage(message.Content));
                         }
@@ -1010,7 +1010,7 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
 
             // Estrai type per decidere se aggiornare WebView
             var type = root.GetProperty("type").GetString();
-            Log.Debug("[{SessionId}] Received: {Type}", tabItem.SessionId.Substring(0, 8), type);
+            //Log.Debug("[{SessionId}] Received: {Type}", tabItem.SessionId.Substring(0, 8), type);
 
             // PRIMA: Aggiorna WebView immediatamente (dal JSON già in memoria - nessun round-trip DB)
             if (type == "user" || type == "assistant")
@@ -1020,18 +1020,18 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
                 {
                     await RemoveWaitingMessageFromWebViewAsync(tabItem);
                 }
-
+            }
                 var content = ExtractBasicContent(root);
                 if (!string.IsNullOrWhiteSpace(content))
                 {
                     await AppendMessageToWebViewAsync(tabItem, type, content);
-                    Log.Debug("[{SessionId}] WebView updated for {Type}", tabItem.SessionId.Substring(0, 8), type);
+                    //Log.Debug("[{SessionId}] WebView updated for {Type}", tabItem.SessionId.Substring(0, 8), type);
                 }
-            }
+            
 
             // POI: Salva nel DB per persistenza - TUTTI i tipi (no filtro)
             await SaveMessageFromJson(tabItem.SessionId, root);
-            Log.Debug("[{SessionId}] Saved to DB: {Type}", tabItem.SessionId.Substring(0, 8), type);
+            //Log.Debug("[{SessionId}] Saved to DB: {Type}", tabItem.SessionId.Substring(0, 8), type);
         }
         catch (Exception ex)
         {

@@ -234,6 +234,9 @@ namespace ClaudeCodeMAUI.Services
             string? usageJson = null,
             string? messageType = null)
         {
+            if (messageType == "queue-operation") 
+                return;
+
             // Determina se dobbiamo creare e gestire il nostro DbContext
             bool shouldDisposeContext = (dbContext == null);
             ClaudeGuiDbContext contextToUse = dbContext ?? await _dbContextFactory.CreateDbContextAsync();
@@ -255,7 +258,7 @@ namespace ClaudeCodeMAUI.Services
                 var message = new Message
                 {
                     ConversationId = conversationId,
-                    Role = role,
+                    MessageType = messageType ?? role,
                     Content = content,
                     Timestamp = timestamp ?? DateTime.UtcNow,
                     Uuid = uuid,
@@ -267,8 +270,7 @@ namespace ClaudeCodeMAUI.Services
                     Cwd = cwd,
                     RequestId = requestId,
                     Model = model,
-                    UsageJson = usageJson,
-                    MessageType = messageType ?? role
+                    UsageJson = usageJson
                 };
 
                 contextToUse.Messages.Add(message);
@@ -279,8 +281,8 @@ namespace ClaudeCodeMAUI.Services
                     await contextToUse.SaveChangesAsync();
                 }
 
-                Log.Debug("Saved message: session={SessionId}, type={Type}, uuid={Uuid}",
-                         conversationId, messageType ?? role, uuid);
+               // Log.Debug($"Saved message: session={SessionId}, type={Type}, uuid={Uuid}",
+               //          conversationId, messageType ?? role, uuid);
             }
             catch (Exception ex)
             {
