@@ -9,6 +9,8 @@ using Serilog;
 using System.Collections.ObjectModel;
 using System.Text.Json;
 using System.ComponentModel;
+using System.Diagnostics;
+
 
 #if WINDOWS
 using Microsoft.Maui.Platform;
@@ -772,8 +774,8 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
             // Invia il messaggio al processo Claude
             await _currentTab.ProcessManager.SendMessageAsync(message);
 
-            // Mostra SUBITO il messaggio utente nella WebView (feedback immediato)
-            await AppendMessageToWebViewAsync(_currentTab, "user", message);
+            //// Mostra SUBITO il messaggio utente nella WebView (feedback immediato)
+            //await AppendMessageToWebViewAsync(_currentTab, "user", message);
 
             // Mostra SUBITO "In attesa di risposta..." (feedback che Claude sta elaborando)
             await AddWaitingMessageToWebViewAsync(_currentTab);
@@ -1024,6 +1026,12 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
             var type = root.GetProperty("type").GetString();
             //Log.Debug("[{SessionId}] Received: {Type}", tabItem.SessionId.Substring(0, 8), type);
 
+            // Riproduci beep per metadata/summary se abilitato nelle impostazioni
+            if ((type == "summary" || type == "metadata") && _settingsService?.PlayBeepOnMetadata == true)
+            {
+                PlayBeep();
+            }
+
             // PRIMA: Aggiorna WebView immediatamente (dal JSON già in memoria - nessun round-trip DB)
             if (type == "user" || type == "assistant")
             {
@@ -1267,6 +1275,10 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
 
             // Estrai contenuto
             string content = ExtractBasicContent(root);
+            if (content =="")
+            {
+                Debugger.Break();
+            }
 
             // Salva con tutti i metadata (modalità standalone: passa null per auto-save)
             await _dbService.SaveMessageAsync(
@@ -1312,7 +1324,9 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
                     if (item.TryGetProperty("text", out var textProp))
                         texts.Add(textProp.GetString() ?? "");
                 }
-                return string.Join("\n", texts);
+                var result = string.Join("\n", texts);
+                return result == "" ? contentProp.GetRawText() : result;
+                
             }
             else if (contentProp.ValueKind == JsonValueKind.String)
             {
@@ -1371,6 +1385,27 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
         });
 
         Log.Debug("[{SessionId}] IsRunning changed to: {IsRunning}", tabItem.SessionId, isRunning);
+    }
+
+    /// <summary>
+    /// Riproduce un beep sonoro per notificare l'arrivo di metadata/summary.
+    /// Funziona solo su Windows. Su altre piattaforme logga un warning.
+    /// </summary>
+    private void PlayBeep()
+    {
+        try
+        {
+#if WINDOWS
+            System.Console.Beep(800, 200); // Frequenza 800Hz, durata 200ms
+            Log.Debug("Beep played for metadata/summary received");
+#else
+            Log.Debug("Beep requested but not supported on this platform");
+#endif
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Failed to play beep sound");
+        }
     }
 
     #endregion
