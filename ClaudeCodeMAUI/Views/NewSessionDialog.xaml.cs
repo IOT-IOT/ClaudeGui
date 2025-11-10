@@ -28,8 +28,9 @@ namespace ClaudeCodeMAUI.Views
         {
             InitializeComponent();
 
-            // Monitora i cambiamenti nel campo Working Directory per abilitare/disabilitare il pulsante Create
-            WorkingDirectoryEntry.TextChanged += OnWorkingDirectoryChanged;
+            // Monitora i cambiamenti nei campi per abilitare/disabilitare il pulsante Create
+            NameEntry.TextChanged += OnFieldChanged;
+            WorkingDirectoryEntry.TextChanged += OnFieldChanged;
         }
 
         /// <summary>
@@ -92,13 +93,14 @@ namespace ClaudeCodeMAUI.Views
         }
 
         /// <summary>
-        /// Handler per il cambio di testo nel campo Working Directory.
-        /// Abilita il pulsante "Crea Sessione" solo se la working directory è specificata.
+        /// Handler per il cambio di testo nei campi Nome e Working Directory.
+        /// Abilita il pulsante "Crea Sessione" solo se entrambi i campi sono compilati.
         /// </summary>
-        private void OnWorkingDirectoryChanged(object? sender, TextChangedEventArgs e)
+        private void OnFieldChanged(object? sender, TextChangedEventArgs e)
         {
-            // Abilita il pulsante Create solo se la working directory è specificata
-            CreateButton.IsEnabled = !string.IsNullOrWhiteSpace(WorkingDirectoryEntry.Text);
+            // Abilita il pulsante Create solo se ENTRAMBI i campi sono compilati
+            CreateButton.IsEnabled = !string.IsNullOrWhiteSpace(NameEntry.Text) &&
+                                     !string.IsNullOrWhiteSpace(WorkingDirectoryEntry.Text);
         }
 
         /// <summary>
@@ -109,7 +111,15 @@ namespace ClaudeCodeMAUI.Views
         {
             try
             {
+                var name = NameEntry.Text?.Trim();
                 var workingDirectory = WorkingDirectoryEntry.Text?.Trim();
+
+                // Validazione: nome obbligatorio
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    await this.DisplaySelectableAlert("Errore", "Devi specificare un nome per la nuova sessione.", "OK");
+                    return;
+                }
 
                 // Validazione: working directory obbligatoria
                 if (string.IsNullOrWhiteSpace(workingDirectory))
@@ -147,15 +157,7 @@ namespace ClaudeCodeMAUI.Views
                     }
                 }
 
-                var name = NameEntry.Text?.Trim();
-
-                // Se il nome non è specificato, lascia NULL (verrà assegnato automaticamente dal sistema)
-                if (string.IsNullOrWhiteSpace(name))
-                {
-                    name = null;
-                }
-
-                Log.Information("Creating new session: Name={Name}, WorkingDirectory={WorkingDirectory}", name ?? "(unnamed)", workingDirectory);
+                Log.Information("Creating new session: Name={Name}, WorkingDirectory={WorkingDirectory}", name, workingDirectory);
 
                 // Crea un oggetto SessionInfo per rappresentare la nuova sessione
                 // NOTA: Il SessionId verrà generato dal processo Claude quando viene avviato

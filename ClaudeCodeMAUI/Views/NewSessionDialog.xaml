@@ -15,16 +15,16 @@
 
         <!-- Campo Nome -->
         <VerticalStackLayout Grid.Row="1" Spacing="8">
-            <Label Text="Nome Sessione (opzionale):"
+            <Label Text="Nome Sessione:"
                    FontSize="14"
                    FontAttributes="Bold" />
             <Entry x:Name="NameEntry"
                    Placeholder="es. Bug fix authentication, Nuovo feature cart, ..."
                    FontSize="14"
                    MaxLength="255" />
-            <Label Text="💡 Assegna un nome per identificare facilmente questa sessione in futuro"
+            <Label Text="⚠️ Il nome della sessione è obbligatorio per identificarla facilmente"
                    FontSize="11"
-                   TextColor="Gray" />
+                   TextColor="Orange" />
         </VerticalStackLayout>
 
         <!-- Campo Working Directory -->
