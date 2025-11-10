@@ -643,6 +643,8 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
             else
             {
                 Log.Information("No session selected - user cancelled");
+                // Chiudi il SessionSelectorPage anche se l'utente ha cancellato
+                await Navigation.PopModalAsync();
             }
         }
         catch (Exception ex)

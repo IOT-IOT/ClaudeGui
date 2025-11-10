@@ -350,12 +350,10 @@ namespace ClaudeCodeMAUI.Views
                 SelectedSession = selectedItem.SessionData;
 
                 // Completa il Task con la sessione selezionata
+                // MainPage chiuderà questa pagina quando riceve il risultato
                 _selectionCompletionSource.TrySetResult(selectedItem.SessionData);
 
-                Log.Information("Session {SessionId} selected, closing selector", selectedItem.SessionId);
-
-                // Chiudi la pagina
-                await Navigation.PopModalAsync();
+                Log.Information("Session {SessionId} selected, MainPage will close selector", selectedItem.SessionId);
             }
         }
 
@@ -608,15 +606,14 @@ namespace ClaudeCodeMAUI.Views
         /// Handler per il pulsante "Annulla".
         /// Chiude la pagina senza selezionare alcuna sessione.
         /// </summary>
-        private async void OnCancelClicked(object? sender, EventArgs e)
+        private void OnCancelClicked(object? sender, EventArgs e)
         {
             Log.Information("Session selector cancelled by user");
             SelectedSession = null;
 
             // Completa il Task con null (nessuna selezione)
+            // MainPage chiuderà questa pagina quando riceve null
             _selectionCompletionSource.TrySetResult(null);
-
-            await Navigation.PopModalAsync();
         }
 
         /// <summary>
