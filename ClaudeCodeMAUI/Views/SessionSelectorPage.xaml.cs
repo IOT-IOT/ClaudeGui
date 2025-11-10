@@ -522,7 +522,8 @@ namespace ClaudeCodeMAUI.Views
             {
                 Log.Information("Opening NewSessionDialog...");
                 var newSessionDialog = new NewSessionDialog();
-                await Navigation.PushModalAsync(new NavigationPage(newSessionDialog));
+                // WORKAROUND: NO NavigationPage wrapper
+                await Navigation.PushModalAsync(newSessionDialog);
                 Log.Information("NewSessionDialog shown, waiting for CompletionTask...");
 
                 // Aspetta che il dialog venga chiuso (CompletionTask)

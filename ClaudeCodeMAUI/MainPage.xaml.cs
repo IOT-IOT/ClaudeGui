@@ -603,7 +603,10 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
             Log.Information("Opening session selector dialog");
 
             var selectorPage = new SessionSelectorPage(_sessionScanner, _dbService);
-            await Navigation.PushModalAsync(new NavigationPage(selectorPage));
+
+            // WORKAROUND per bug MAUI: usa Shell.Current.GoToAsync invece di modal
+            // Ref: https://github.com/dotnet/maui/issues/26418
+            await Navigation.PushModalAsync(selectorPage); // NO NavigationPage wrapper!
 
             // Aspetta che l'utente selezioni una sessione o annulli
             var selected = await selectorPage.SelectionTask;
