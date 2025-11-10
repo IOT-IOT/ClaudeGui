@@ -350,10 +350,13 @@ namespace ClaudeCodeMAUI.Views
                 SelectedSession = selectedItem.SessionData;
 
                 // Completa il Task con la sessione selezionata
-                // MainPage chiuderà questa pagina quando riceve il risultato
                 _selectionCompletionSource.TrySetResult(selectedItem.SessionData);
 
-                Log.Information("Session {SessionId} selected, MainPage will close selector", selectedItem.SessionId);
+                Log.Information("Session {SessionId} selected, closing selector", selectedItem.SessionId);
+
+                // Chiudi questa pagina
+                await Navigation.PopModalAsync();
+                Log.Information("SessionSelectorPage closed itself after selection");
             }
         }
 
@@ -553,8 +556,11 @@ namespace ClaudeCodeMAUI.Views
                     SelectedSession = newSession;
                     _selectionCompletionSource.TrySetResult(newSession);
 
-                    // NON chiudere qui - sarà il MainPage a chiudere il SessionSelectorPage
-                    // IMPORTANTE: Return immediatamente per evitare race conditions
+                    // Chiudi QUESTO SessionSelectorPage immediatamente
+                    // MainPage non deve chiudere perché lo facciamo già qui
+                    Log.Information("SessionSelectorPage closing itself after new session creation");
+                    await Navigation.PopModalAsync();
+                    Log.Information("SessionSelectorPage closed itself");
                     return;
                 }
 
@@ -604,7 +610,7 @@ namespace ClaudeCodeMAUI.Views
         /// Handler per il pulsante "Annulla".
         /// Chiude la pagina senza selezionare alcuna sessione.
         /// </summary>
-        private void OnCancelClicked(object? sender, EventArgs e)
+        private async void OnCancelClicked(object? sender, EventArgs e)
         {
             Log.Information("Session selector cancelled by user");
 
@@ -618,9 +624,13 @@ namespace ClaudeCodeMAUI.Views
             SelectedSession = null;
 
             // Completa il Task con null (nessuna selezione)
-            // MainPage chiuderà questa pagina quando riceve null
             Log.Information("Setting SelectionTask result to null");
             _selectionCompletionSource.TrySetResult(null);
+
+            // Chiudi questa pagina
+            Log.Information("SessionSelectorPage closing itself after cancel");
+            await Navigation.PopModalAsync();
+            Log.Information("SessionSelectorPage closed itself after cancel");
         }
 
         /// <summary>

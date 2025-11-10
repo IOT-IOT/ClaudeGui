@@ -635,41 +635,14 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
                 Log.Information("Opening selected session: {SessionId}, Resume: {Resume}", selected.SessionId, !isNewSession);
                 await OpenSessionInNewTabAsync(selected, resumeExisting: !isNewSession);
 
-                // Chiudi il SessionSelectorPage dopo aver aperto la sessione
-                Log.Information("Closing SessionSelectorPage... (Modal stack count: {Count})", Navigation.ModalStack.Count);
-                try
-                {
-                    // Chiudi TUTTI i modal aperti (potrebbero essere più di uno)
-                    while (Navigation.ModalStack.Count > 0)
-                    {
-                        await Navigation.PopModalAsync(false); // false = no animation per velocità
-                        Log.Information("Popped one modal, remaining: {Count}", Navigation.ModalStack.Count);
-                    }
-                    Log.Information("SessionSelectorPage closed successfully");
-                }
-                catch (Exception popEx)
-                {
-                    Log.Error(popEx, "FAILED to close SessionSelectorPage!");
-                }
+                // NON chiudere qui - SessionSelectorPage si chiude da solo dopo TrySetResult
+                Log.Information("Session opened, SessionSelectorPage should have closed itself");
             }
             else
             {
                 Log.Information("No session selected - user cancelled (Modal stack count: {Count})", Navigation.ModalStack.Count);
-                // Chiudi il SessionSelectorPage anche se l'utente ha cancellato
-                try
-                {
-                    // Chiudi TUTTI i modal aperti
-                    while (Navigation.ModalStack.Count > 0)
-                    {
-                        await Navigation.PopModalAsync(false);
-                        Log.Information("Popped one modal after cancel, remaining: {Count}", Navigation.ModalStack.Count);
-                    }
-                    Log.Information("SessionSelectorPage closed after cancel");
-                }
-                catch (Exception popEx)
-                {
-                    Log.Error(popEx, "FAILED to close SessionSelectorPage after cancel!");
-                }
+                // In questo caso SessionSelectorPage si è chiuso da solo quando l'utente ha premuto Cancel
+                // Non serve fare nulla qui
             }
         }
         catch (Exception ex)
