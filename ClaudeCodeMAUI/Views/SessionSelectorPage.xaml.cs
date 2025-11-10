@@ -523,11 +523,32 @@ namespace ClaudeCodeMAUI.Views
                 await Navigation.PushModalAsync(new NavigationPage(newSessionDialog));
 
                 // Quando il dialog viene chiuso, controlla se l'utente ha creato una nuova sessione
-                if (newSessionDialog.WasSessionCreated)
+                if (newSessionDialog.WasSessionCreated && newSessionDialog.CreatedSession != null)
                 {
-                    // Nuova sessione creata → chiudi il SessionSelectorPage
-                    // Il MainPage si occuperà di creare il tab con la nuova sessione
-                    await Navigation.PopModalAsync(); // Chiudi il SessionSelectorPage
+                    Log.Information("New session created: Name={Name}, WorkingDirectory={WorkingDirectory}",
+                        newSessionDialog.CreatedSession.Name,
+                        newSessionDialog.CreatedSession.WorkingDirectory);
+
+                    // Crea un oggetto Session per la nuova sessione
+                    // NOTA: SessionId verrà generato dal MainPage quando avvia il processo Claude
+                    var newSession = new Session
+                    {
+                        SessionId = "NEW_SESSION", // Placeholder - verrà sostituito dal MainPage
+                        Name = newSessionDialog.CreatedSession.Name,
+                        WorkingDirectory = newSessionDialog.CreatedSession.WorkingDirectory,
+                        Status = "open",
+                        CreatedAt = DateTime.Now,
+                        LastActivity = DateTime.Now,
+                        Processed = false,
+                        Excluded = false
+                    };
+
+                    // Imposta il risultato del SelectionTask con la nuova sessione
+                    SelectedSession = newSession;
+                    _selectionCompletionSource.TrySetResult(newSession);
+
+                    // Chiudi il SessionSelectorPage
+                    await Navigation.PopModalAsync();
                 }
             }
             catch (Exception ex)
