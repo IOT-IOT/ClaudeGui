@@ -538,20 +538,9 @@ namespace ClaudeCodeMAUI.Views
                         newSessionDialog.CreatedSession.Name,
                         newSessionDialog.CreatedSession.WorkingDirectory);
 
-                    // Converti SessionInfo in Session entity
+                    // Usa direttamente la Session entity creata dal NewSessionDialog
                     // NOTA: SessionId verrà generato dal MainPage quando avvia il processo Claude
-                    var sessionInfo = newSessionDialog.CreatedSession;
-                    var newSession = new Session
-                    {
-                        SessionId = sessionInfo.SessionId, // Vuoto, verrà popolato da MainPage
-                        Name = sessionInfo.Name,
-                        WorkingDirectory = sessionInfo.WorkingDirectory,
-                        Status = sessionInfo.Status,
-                        CreatedAt = sessionInfo.CreatedAt,
-                        LastActivity = sessionInfo.LastActivity,
-                        Processed = false,
-                        Excluded = false
-                    };
+                    var newSession = newSessionDialog.CreatedSession;
 
                     Log.Information("Setting SelectionTask result with new session...");
                     // Imposta il risultato del SelectionTask con la nuova sessione

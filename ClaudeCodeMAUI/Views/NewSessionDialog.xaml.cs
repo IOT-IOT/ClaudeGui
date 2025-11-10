@@ -1,5 +1,6 @@
 using ClaudeCodeMAUI.Extensions;
 using ClaudeCodeMAUI.Models;
+using ClaudeCodeMAUI.Models.Entities;
 using Serilog;
 
 namespace ClaudeCodeMAUI.Views
@@ -24,7 +25,7 @@ namespace ClaudeCodeMAUI.Views
         /// <summary>
         /// Informazioni della sessione creata (null se l'utente ha cancellato)
         /// </summary>
-        public SessionInfo? CreatedSession { get; private set; }
+        public Session? CreatedSession { get; private set; }
 
         /// <summary>
         /// Task che completa quando il dialog viene chiuso (con o senza creazione sessione)
@@ -166,9 +167,9 @@ namespace ClaudeCodeMAUI.Views
 
                 Log.Information("Creating new session: Name={Name}, WorkingDirectory={WorkingDirectory}", name, workingDirectory);
 
-                // Crea un oggetto SessionInfo per rappresentare la nuova sessione
+                // Crea un oggetto Session per rappresentare la nuova sessione
                 // NOTA: Il SessionId verrà generato dal processo Claude quando viene avviato
-                CreatedSession = new SessionInfo
+                CreatedSession = new Session
                 {
                     SessionId = string.Empty, // Verrà popolato dal sistema quando il processo Claude viene avviato
                     Name = name,
@@ -176,7 +177,8 @@ namespace ClaudeCodeMAUI.Views
                     CreatedAt = DateTime.Now,
                     Status = "open",
                     LastActivity = DateTime.Now,
-                    JsonlFilePath = string.Empty // Verrà popolato quando il processo Claude crea il file .jsonl
+                    Processed = false,
+                    Excluded = false
                 };
 
                 WasSessionCreated = true;
