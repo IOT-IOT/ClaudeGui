@@ -7,13 +7,15 @@ namespace ClaudeCodeMAUI.Views
     /// <summary>
     /// Dialog per la creazione di una nuova sessione Claude Code.
     /// Richiede all'utente di specificare:
-    /// - Nome sessione (opzionale)
+    /// - Nome sessione (obbligatorio)
     /// - Working directory (obbligatoria)
     ///
     /// Una nuova sessione viene creata SENZA --resume (conversazione da zero).
     /// </summary>
     public partial class NewSessionDialog : ContentPage
     {
+        private readonly TaskCompletionSource<bool> _completionSource = new TaskCompletionSource<bool>();
+
         /// <summary>
         /// Indica se l'utente ha creato una nuova sessione (true) o ha cancellato (false)
         /// </summary>
@@ -23,6 +25,11 @@ namespace ClaudeCodeMAUI.Views
         /// Informazioni della sessione creata (null se l'utente ha cancellato)
         /// </summary>
         public SessionInfo? CreatedSession { get; private set; }
+
+        /// <summary>
+        /// Task che completa quando il dialog viene chiuso (con o senza creazione sessione)
+        /// </summary>
+        public Task<bool> CompletionTask => _completionSource.Task;
 
         public NewSessionDialog()
         {
@@ -173,6 +180,7 @@ namespace ClaudeCodeMAUI.Views
                 };
 
                 WasSessionCreated = true;
+                _completionSource.TrySetResult(true);
                 await Navigation.PopModalAsync();
             }
             catch (Exception ex)
@@ -191,6 +199,7 @@ namespace ClaudeCodeMAUI.Views
             Log.Information("New session dialog cancelled by user");
             WasSessionCreated = false;
             CreatedSession = null;
+            _completionSource.TrySetResult(false);
             await Navigation.PopModalAsync();
         }
     }

@@ -522,6 +522,9 @@ namespace ClaudeCodeMAUI.Views
                 var newSessionDialog = new NewSessionDialog();
                 await Navigation.PushModalAsync(new NavigationPage(newSessionDialog));
 
+                // Aspetta che il dialog venga chiuso (CompletionTask)
+                await newSessionDialog.CompletionTask;
+
                 // Quando il dialog viene chiuso, controlla se l'utente ha creato una nuova sessione
                 if (newSessionDialog.WasSessionCreated && newSessionDialog.CreatedSession != null)
                 {
