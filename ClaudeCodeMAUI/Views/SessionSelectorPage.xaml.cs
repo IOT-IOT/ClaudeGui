@@ -519,11 +519,15 @@ namespace ClaudeCodeMAUI.Views
         {
             try
             {
+                Log.Information("Opening NewSessionDialog...");
                 var newSessionDialog = new NewSessionDialog();
                 await Navigation.PushModalAsync(new NavigationPage(newSessionDialog));
+                Log.Information("NewSessionDialog shown, waiting for CompletionTask...");
 
                 // Aspetta che il dialog venga chiuso (CompletionTask)
-                await newSessionDialog.CompletionTask;
+                var completed = await newSessionDialog.CompletionTask;
+                Log.Information("NewSessionDialog CompletionTask completed: {Completed}, WasSessionCreated: {WasCreated}",
+                    completed, newSessionDialog.WasSessionCreated);
 
                 // Quando il dialog viene chiuso, controlla se l'utente ha creato una nuova sessione
                 if (newSessionDialog.WasSessionCreated && newSessionDialog.CreatedSession != null)
@@ -546,12 +550,19 @@ namespace ClaudeCodeMAUI.Views
                         Excluded = false
                     };
 
+                    Log.Information("Setting SelectionTask result with new session...");
                     // Imposta il risultato del SelectionTask con la nuova sessione
                     SelectedSession = newSession;
                     _selectionCompletionSource.TrySetResult(newSession);
 
+                    Log.Information("Closing SessionSelectorPage...");
                     // Chiudi il SessionSelectorPage
                     await Navigation.PopModalAsync();
+                    Log.Information("SessionSelectorPage closed successfully");
+                }
+                else
+                {
+                    Log.Information("New session dialog closed without creating a session");
                 }
             }
             catch (Exception ex)
