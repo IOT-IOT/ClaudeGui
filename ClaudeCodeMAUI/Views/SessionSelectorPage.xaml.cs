@@ -538,16 +538,17 @@ namespace ClaudeCodeMAUI.Views
                         newSessionDialog.CreatedSession.Name,
                         newSessionDialog.CreatedSession.WorkingDirectory);
 
-                    // Crea un oggetto Session per la nuova sessione
+                    // Converti SessionInfo in Session entity
                     // NOTA: SessionId verrà generato dal MainPage quando avvia il processo Claude
+                    var sessionInfo = newSessionDialog.CreatedSession;
                     var newSession = new Session
                     {
-                        SessionId = "NEW_SESSION", // Placeholder - verrà sostituito dal MainPage
-                        Name = newSessionDialog.CreatedSession.Name,
-                        WorkingDirectory = newSessionDialog.CreatedSession.WorkingDirectory,
-                        Status = "open",
-                        CreatedAt = DateTime.Now,
-                        LastActivity = DateTime.Now,
+                        SessionId = sessionInfo.SessionId, // Vuoto, verrà popolato da MainPage
+                        Name = sessionInfo.Name,
+                        WorkingDirectory = sessionInfo.WorkingDirectory,
+                        Status = sessionInfo.Status,
+                        CreatedAt = sessionInfo.CreatedAt,
+                        LastActivity = sessionInfo.LastActivity,
                         Processed = false,
                         Excluded = false
                     };
