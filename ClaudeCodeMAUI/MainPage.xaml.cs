@@ -634,6 +634,11 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
 
                 Log.Information("Opening selected session: {SessionId}, Resume: {Resume}", selected.SessionId, !isNewSession);
                 await OpenSessionInNewTabAsync(selected, resumeExisting: !isNewSession);
+
+                // Chiudi il SessionSelectorPage dopo aver aperto la sessione
+                Log.Information("Closing SessionSelectorPage...");
+                await Navigation.PopModalAsync();
+                Log.Information("SessionSelectorPage closed successfully");
             }
             else
             {
