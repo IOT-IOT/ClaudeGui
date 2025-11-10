@@ -636,10 +636,15 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
                 await OpenSessionInNewTabAsync(selected, resumeExisting: !isNewSession);
 
                 // Chiudi il SessionSelectorPage dopo aver aperto la sessione
-                Log.Information("Closing SessionSelectorPage...");
+                Log.Information("Closing SessionSelectorPage... (Modal stack count: {Count})", Navigation.ModalStack.Count);
                 try
                 {
-                    await Navigation.PopModalAsync();
+                    // Chiudi TUTTI i modal aperti (potrebbero essere più di uno)
+                    while (Navigation.ModalStack.Count > 0)
+                    {
+                        await Navigation.PopModalAsync(false); // false = no animation per velocità
+                        Log.Information("Popped one modal, remaining: {Count}", Navigation.ModalStack.Count);
+                    }
                     Log.Information("SessionSelectorPage closed successfully");
                 }
                 catch (Exception popEx)
@@ -649,11 +654,16 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
             }
             else
             {
-                Log.Information("No session selected - user cancelled");
+                Log.Information("No session selected - user cancelled (Modal stack count: {Count})", Navigation.ModalStack.Count);
                 // Chiudi il SessionSelectorPage anche se l'utente ha cancellato
                 try
                 {
-                    await Navigation.PopModalAsync();
+                    // Chiudi TUTTI i modal aperti
+                    while (Navigation.ModalStack.Count > 0)
+                    {
+                        await Navigation.PopModalAsync(false);
+                        Log.Information("Popped one modal after cancel, remaining: {Count}", Navigation.ModalStack.Count);
+                    }
                     Log.Information("SessionSelectorPage closed after cancel");
                 }
                 catch (Exception popEx)
