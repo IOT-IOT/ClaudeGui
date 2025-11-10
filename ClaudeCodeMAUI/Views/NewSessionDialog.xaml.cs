@@ -34,7 +34,7 @@ namespace ClaudeCodeMAUI.Views
 
         /// <summary>
         /// Handler per il pulsante "Sfoglia".
-        /// Apre un folder picker per selezionare la working directory.
+        /// Apre un folder picker nativo per selezionare la working directory.
         /// </summary>
         private async void OnBrowseClicked(object? sender, EventArgs e)
         {
@@ -42,7 +42,30 @@ namespace ClaudeCodeMAUI.Views
             {
                 Log.Information("Browse button clicked for working directory selection");
 
-                // MAUI non ha FolderPicker nativo, usa un prompt per inserire il path manualmente
+#if WINDOWS
+                // Usa il FolderPicker nativo di Windows
+                var folderPicker = new Windows.Storage.Pickers.FolderPicker();
+
+                // Ottieni la window handle per il picker
+                var hwnd = ((MauiWinUIWindow)Application.Current.Windows[0].Handler.PlatformView).WindowHandle;
+                WinRT.Interop.InitializeWithWindow.Initialize(folderPicker, hwnd);
+
+                folderPicker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.ComputerFolder;
+                folderPicker.FileTypeFilter.Add("*");
+
+                var folder = await folderPicker.PickSingleFolderAsync();
+
+                if (folder != null)
+                {
+                    WorkingDirectoryEntry.Text = folder.Path;
+                    Log.Information("Working directory selected: {Path}", folder.Path);
+                }
+                else
+                {
+                    Log.Information("Folder picker cancelled by user");
+                }
+#else
+                // Fallback per altre piattaforme: usa prompt manuale
                 var path = await DisplayPromptAsync(
                     "Working Directory",
                     "Inserisci il percorso completo della working directory:",
@@ -59,6 +82,7 @@ namespace ClaudeCodeMAUI.Views
                 {
                     Log.Information("Folder path entry cancelled by user");
                 }
+#endif
             }
             catch (Exception ex)
             {

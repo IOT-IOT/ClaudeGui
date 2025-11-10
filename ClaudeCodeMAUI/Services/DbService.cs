@@ -1,10 +1,13 @@
 using ClaudeCodeMAUI.Models;
 using ClaudeCodeMAUI.Models.Entities;
+using ClaudeCodeMAUI.Utilities;
 using Microsoft.EntityFrameworkCore;
 using MySqlConnector;
 using Serilog;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace ClaudeCodeMAUI.Services
@@ -201,6 +204,85 @@ namespace ClaudeCodeMAUI.Services
         }
 
         /// <summary>
+        /// Salva un singolo messaggio nel database in modalità standalone (con SaveChanges automatico).
+        /// Usare questo metodo per salvare messaggi singoli in tempo reale.
+        /// Per batch import, usare SaveMessageAsync con DbContext condiviso.
+        /// </summary>
+        /// <param name="conversationId">ID della sessione di conversazione</param>
+        /// <param name="role">Ruolo del mittente</param>
+        /// <param name="content">Contenuto del messaggio</param>
+        /// <param name="timestamp">Timestamp del messaggio</param>
+        /// <param name="uuid">UUID univoco del messaggio</param>
+        /// <param name="parentUuid">UUID del messaggio parent</param>
+        /// <param name="version">Versione Claude</param>
+        /// <param name="gitBranch">Branch Git</param>
+        /// <param name="isSidechain">Flag sidechain</param>
+        /// <param name="userType">Tipo di utente</param>
+        /// <param name="cwd">Current working directory</param>
+        /// <param name="requestId">Request ID</param>
+        /// <param name="model">Modello Claude usato</param>
+        /// <param name="usageJson">JSON con usage info</param>
+        /// <param name="messageType">Tipo di messaggio</param>
+        public async Task SaveMessageStandaloneAsync(
+            string conversationId,
+            string role,
+            string content,
+            DateTime? timestamp = null,
+            string? uuid = null,
+            string? parentUuid = null,
+            string? version = null,
+            string? gitBranch = null,
+            bool? isSidechain = null,
+            string? userType = null,
+            string? cwd = null,
+            string? requestId = null,
+            string? model = null,
+            string? usageJson = null,
+            string? messageType = null)
+        {
+            try
+            {
+                // Crea DbContext dedicato per questa operazione
+                using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
+                // Carica UUIDs esistenti per questa sessione (ottimizzazione per evitare duplicati)
+                var existingUuids = await dbContext.Messages
+                    .Where(m => m.ConversationId == conversationId)
+                    .Select(m => m.Uuid)
+                    .ToHashSetAsync();
+
+                // Salva il messaggio usando il metodo batch (senza SaveChanges)
+                await SaveMessageAsync(
+                    existingUuids,
+                    dbContext,
+                    conversationId,
+                    role,
+                    content,
+                    timestamp,
+                    uuid,
+                    parentUuid,
+                    version,
+                    gitBranch,
+                    isSidechain,
+                    userType,
+                    cwd,
+                    requestId,
+                    model,
+                    usageJson,
+                    messageType);
+
+                // Salva nel database
+                await dbContext.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to save standalone message for session: {SessionId}, uuid: {Uuid}",
+                    conversationId, uuid);
+                // Non fare throw - il salvataggio dei messaggi è opzionale e non deve bloccare l'app
+            }
+        }
+
+        /// <summary>
         /// Salva un messaggio nella tabella messages (versione semplificata per retrocompatibilità).
         /// </summary>
         /// <param name="conversationId">ID della sessione di conversazione</param>
@@ -208,16 +290,35 @@ namespace ClaudeCodeMAUI.Services
         /// <param name="content">Contenuto del messaggio (può includere markdown)</param>
         public async Task SaveMessageAsync(string conversationId, string role, string content)
         {
-            await SaveMessageAsync(null, conversationId, role, content, null, null);
+            await SaveMessageStandaloneAsync(conversationId, role, content);
         }
 
         /// <summary>
-        /// Salva un messaggio nel database con metadati completi dal file .jsonl
+        /// Salva un messaggio nel database con metadati completi dal file .jsonl (modalità batch).
         /// Il numero di sequenza viene calcolato automaticamente come MAX(sequence) + 1 per la conversazione.
+        /// NOTA: Questo metodo NON esegue SaveChanges - usato per batch import.
+        /// Per salvare singoli messaggi, usare SaveMessageStandaloneAsync.
         /// </summary>
-        /// <param name="dbContext">DbContext opzionale. Se null, ne crea uno nuovo e salva subito. Se fornito, usa quello esistente senza SaveChanges (modalità batch).</param>
+        /// <param name="existingUuids">HashSet con UUID già esistenti (per evitare duplicati senza query database)</param>
+        /// <param name="dbContext">DbContext da usare (modalità batch, il chiamante gestisce SaveChanges)</param>
+        /// <param name="conversationId">ID della sessione di conversazione</param>
+        /// <param name="role">Ruolo del mittente</param>
+        /// <param name="content">Contenuto del messaggio</param>
+        /// <param name="timestamp">Timestamp del messaggio</param>
+        /// <param name="uuid">UUID univoco del messaggio</param>
+        /// <param name="parentUuid">UUID del messaggio parent</param>
+        /// <param name="version">Versione Claude</param>
+        /// <param name="gitBranch">Branch Git</param>
+        /// <param name="isSidechain">Flag sidechain</param>
+        /// <param name="userType">Tipo di utente</param>
+        /// <param name="cwd">Current working directory</param>
+        /// <param name="requestId">Request ID</param>
+        /// <param name="model">Modello Claude usato</param>
+        /// <param name="usageJson">JSON con usage info</param>
+        /// <param name="messageType">Tipo di messaggio</param>
         public async Task SaveMessageAsync(
-            ClaudeGuiDbContext? dbContext = null,
+            HashSet<string> existingUuids,
+            ClaudeGuiDbContext dbContext,
             string conversationId = "",
             string role = "",
             string content = "",
@@ -234,68 +335,244 @@ namespace ClaudeCodeMAUI.Services
             string? usageJson = null,
             string? messageType = null)
         {
-            if (messageType == "queue-operation") 
+            // Verifica duplicati usando HashSet (O(1) lookup, no database round-trip)
+            if (!string.IsNullOrEmpty(uuid) && existingUuids.Contains(uuid))
+            {
+                // Messaggio già esistente, skip
                 return;
+            }
 
-            // Determina se dobbiamo creare e gestire il nostro DbContext
-            bool shouldDisposeContext = (dbContext == null);
-            ClaudeGuiDbContext contextToUse = dbContext ?? await _dbContextFactory.CreateDbContextAsync();
 
+            // Crea il nuovo messaggio
+            var message = new Message
+            {
+                ConversationId = conversationId,
+                MessageType = messageType ?? role,
+                Content = content,
+                Timestamp = timestamp ?? DateTime.UtcNow,
+                Uuid = uuid,
+                ParentUuid = parentUuid,
+                Version = version,
+                GitBranch = gitBranch,
+                IsSidechain = isSidechain,
+                UserType = userType,
+                Cwd = cwd,
+                RequestId = requestId,
+                Model = model,
+                UsageJson = usageJson
+            };
+
+            // Aggiungi al ChangeTracker (il chiamante farà SaveChanges in batch)
+            dbContext.Messages.Add(message);
+
+            // Aggiungi UUID all'HashSet per evitare duplicati nei prossimi messaggi dello stesso batch
+            if (!string.IsNullOrEmpty(uuid))
+            {
+                existingUuids.Add(uuid);
+            }
+        }
+
+        /// <summary>
+        /// Salva un summary nel database in modalità batch (senza SaveChanges).
+        /// Usato durante l'import batch di messaggi .jsonl quando viene rilevato un messaggio type="summary".
+        /// Il chiamante deve gestire SaveChanges.
+        /// </summary>
+        /// <param name="dbContext">DbContext da usare (modalità batch)</param>
+        /// <param name="sessionId">ID della sessione di conversazione</param>
+        /// <param name="timestamp">Timestamp del summary</param>
+        /// <param name="summaryText">Testo del summary generato da Claude</param>
+        /// <param name="leafUuid">UUID del messaggio finale (opzionale)</param>
+        public void SaveSummary(
+            ClaudeGuiDbContext dbContext,
+            string sessionId,
+            DateTime timestamp,
+            string summaryText,
+            string? leafUuid = null)
+        {
+            // Crea l'entity Summary
+            var summary = new Summary
+            {
+                SessionId = sessionId,
+                Timestamp = timestamp,
+                SummaryText = summaryText,
+                LeafUuid = leafUuid
+            };
+
+            // Aggiungi al ChangeTracker (il chiamante farà SaveChanges in batch)
+            dbContext.Summaries.Add(summary);
+        }
+
+        /// <summary>
+        /// Salva un singolo summary nel database in modalità standalone (con SaveChanges automatico).
+        /// Usato quando arriva un messaggio type="summary" in tempo reale (non durante batch import).
+        /// </summary>
+        /// <param name="sessionId">ID della sessione di conversazione</param>
+        /// <param name="timestamp">Timestamp del summary</param>
+        /// <param name="summaryText">Testo del summary generato da Claude</param>
+        /// <param name="leafUuid">UUID del messaggio finale (opzionale)</param>
+        public async Task SaveSummaryStandaloneAsync(
+            string sessionId,
+            DateTime timestamp,
+            string summaryText,
+            string? leafUuid = null)
+        {
             try
             {
-                // Verifica se il messaggio esiste già (ON DUPLICATE KEY UPDATE equivalente)
-                if (!string.IsNullOrEmpty(uuid))
-                {
-                    var exists = await contextToUse.Messages.AnyAsync(m => m.Uuid == uuid);
-                    if (exists)
-                    {
-                        //Log.Debug("Message with uuid {Uuid} already exists, skipping", uuid);
-                        return;
-                    }
-                }
+                // Crea DbContext dedicato per questa operazione
+                using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
-                // Crea il nuovo messaggio
-                var message = new Message
-                {
-                    ConversationId = conversationId,
-                    MessageType = messageType ?? role,
-                    Content = content,
-                    Timestamp = timestamp ?? DateTime.UtcNow,
-                    Uuid = uuid,
-                    ParentUuid = parentUuid,
-                    Version = version,
-                    GitBranch = gitBranch,
-                    IsSidechain = isSidechain,
-                    UserType = userType,
-                    Cwd = cwd,
-                    RequestId = requestId,
-                    Model = model,
-                    UsageJson = usageJson
-                };
+                // Salva il summary usando il metodo batch (senza SaveChanges)
+                SaveSummary(dbContext, sessionId, timestamp, summaryText, leafUuid);
 
-                contextToUse.Messages.Add(message);
+                // Salva nel database
+                await dbContext.SaveChangesAsync();
 
-                // Se abbiamo creato il context noi, salviamo subito (modalità standalone)
-                if (shouldDisposeContext)
-                {
-                    await contextToUse.SaveChangesAsync();
-                }
-
-               // Log.Debug($"Saved message: session={SessionId}, type={Type}, uuid={Uuid}",
-               //          conversationId, messageType ?? role, uuid);
+                Log.Information("Saved summary for session {SessionId}: {Summary}",
+                    sessionId, summaryText);
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "Failed to save message for session: {SessionId}", conversationId);
-                // Non fare throw - il salvataggio dei messaggi è opzionale e non deve bloccare l'app
+                Log.Error(ex, "Failed to save standalone summary for session: {SessionId}",
+                    sessionId);
+                // Non fare throw - il salvataggio dei summary è opzionale e non deve bloccare l'app
             }
-            finally
+        }
+
+        /// <summary>
+        /// Salva un file history snapshot nel database in modalità batch (senza SaveChanges).
+        /// Usato durante l'import batch di messaggi .jsonl quando viene rilevato un messaggio type="file-history-snapshot".
+        /// Il chiamante deve gestire SaveChanges.
+        /// </summary>
+        /// <param name="dbContext">DbContext da usare (modalità batch)</param>
+        /// <param name="sessionId">ID della sessione di conversazione</param>
+        /// <param name="timestamp">Timestamp dello snapshot</param>
+        /// <param name="messageId">Message ID univoco dello snapshot</param>
+        /// <param name="trackedFileBackupsJson">JSON con i backup dei file tracciati</param>
+        /// <param name="isSnapshotUpdate">Flag aggiornamento snapshot</param>
+        public void SaveFileHistorySnapshot(
+            ClaudeGuiDbContext dbContext,
+            string sessionId,
+            DateTime timestamp,
+            string messageId,
+            string trackedFileBackupsJson,
+            bool isSnapshotUpdate)
+        {
+            // Crea l'entity FileHistorySnapshot
+            var snapshot = new FileHistorySnapshot
             {
-                // Dispose del context solo se l'abbiamo creato noi
-                if (shouldDisposeContext && contextToUse != null)
-                {
-                    await contextToUse.DisposeAsync();
-                }
+                SessionId = sessionId,
+                Timestamp = timestamp,
+                MessageId = messageId,
+                TrackedFileBackupsJson = trackedFileBackupsJson,
+                IsSnapshotUpdate = isSnapshotUpdate
+            };
+
+            // Aggiungi al ChangeTracker (il chiamante farà SaveChanges in batch)
+            dbContext.FileHistorySnapshots.Add(snapshot);
+        }
+
+        /// <summary>
+        /// Salva un singolo file history snapshot nel database in modalità standalone (con SaveChanges automatico).
+        /// Usato quando arriva un messaggio type="file-history-snapshot" in tempo reale (non durante batch import).
+        /// </summary>
+        /// <param name="sessionId">ID della sessione di conversazione</param>
+        /// <param name="timestamp">Timestamp dello snapshot</param>
+        /// <param name="messageId">Message ID univoco dello snapshot</param>
+        /// <param name="trackedFileBackupsJson">JSON con i backup dei file tracciati</param>
+        /// <param name="isSnapshotUpdate">Flag aggiornamento snapshot</param>
+        public async Task SaveFileHistorySnapshotStandaloneAsync(
+            string sessionId,
+            DateTime timestamp,
+            string messageId,
+            string trackedFileBackupsJson,
+            bool isSnapshotUpdate)
+        {
+            try
+            {
+                // Crea DbContext dedicato per questa operazione
+                using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
+                // Salva lo snapshot usando il metodo batch (senza SaveChanges)
+                SaveFileHistorySnapshot(dbContext, sessionId, timestamp, messageId,
+                    trackedFileBackupsJson, isSnapshotUpdate);
+
+                // Salva nel database
+                await dbContext.SaveChangesAsync();
+
+                Log.Information("Saved file history snapshot for session {SessionId}: messageId={MessageId}",
+                    sessionId, messageId);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to save standalone file history snapshot for session: {SessionId}",
+                    sessionId);
+                // Non fare throw - il salvataggio degli snapshot è opzionale e non deve bloccare l'app
+            }
+        }
+
+        /// <summary>
+        /// Salva una queue operation nel database in modalità batch (senza SaveChanges).
+        /// Usato durante l'import batch di messaggi .jsonl quando viene rilevato un messaggio type="queue-operation".
+        /// Il chiamante deve gestire SaveChanges.
+        /// </summary>
+        /// <param name="dbContext">DbContext da usare (modalità batch)</param>
+        /// <param name="sessionId">ID della sessione di conversazione</param>
+        /// <param name="timestamp">Timestamp dell'operazione</param>
+        /// <param name="operation">Tipo di operazione (es. "enqueue")</param>
+        /// <param name="content">Contenuto del messaggio accodato</param>
+        public void SaveQueueOperation(
+            ClaudeGuiDbContext dbContext,
+            string sessionId,
+            DateTime timestamp,
+            string operation,
+            string content)
+        {
+            // Crea l'entity QueueOperation
+            var queueOp = new QueueOperation
+            {
+                SessionId = sessionId,
+                Timestamp = timestamp,
+                Operation = operation,
+                Content = content
+            };
+
+            // Aggiungi al ChangeTracker (il chiamante farà SaveChanges in batch)
+            dbContext.QueueOperations.Add(queueOp);
+        }
+
+        /// <summary>
+        /// Salva una singola queue operation nel database in modalità standalone (con SaveChanges automatico).
+        /// Usato quando arriva un messaggio type="queue-operation" in tempo reale (non durante batch import).
+        /// </summary>
+        /// <param name="sessionId">ID della sessione di conversazione</param>
+        /// <param name="timestamp">Timestamp dell'operazione</param>
+        /// <param name="operation">Tipo di operazione (es. "enqueue")</param>
+        /// <param name="content">Contenuto del messaggio accodato</param>
+        public async Task SaveQueueOperationStandaloneAsync(
+            string sessionId,
+            DateTime timestamp,
+            string operation,
+            string content)
+        {
+            try
+            {
+                // Crea DbContext dedicato per questa operazione
+                using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
+                // Salva la queue operation usando il metodo batch (senza SaveChanges)
+                SaveQueueOperation(dbContext, sessionId, timestamp, operation, content);
+
+                // Salva nel database
+                await dbContext.SaveChangesAsync();
+
+                Log.Information("Saved queue operation for session {SessionId}: operation={Operation}",
+                    sessionId, operation);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to save standalone queue operation for session: {SessionId}",
+                    sessionId);
+                // Non fare throw - il salvataggio delle queue operations è opzionale e non deve bloccare l'app
             }
         }
 
@@ -810,8 +1087,27 @@ namespace ClaudeCodeMAUI.Services
 
                 int lineNumber = 0;
 
-                using var reader = new System.IO.StreamReader(jsonlFilePath);
+                // Apre il file con accesso condiviso (read/write concorrente)
+                using var fileStream = new System.IO.FileStream(
+                    jsonlFilePath,
+                    System.IO.FileMode.Open,
+                    System.IO.FileAccess.Read,
+                    System.IO.FileShare.ReadWrite  // Permette accesso concorrente in lettura e scrittura
+                );
+                using var reader = new System.IO.StreamReader(fileStream, System.Text.Encoding.UTF8);
                 using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
+                // OTTIMIZZAZIONE: Carica TUTTI gli UUID esistenti per questa sessione una sola volta
+                // Evita N query durante il loop (1 query iniziale invece di N query nel loop)
+                // HashSet permette lookup O(1) invece di query database O(N)
+                var existingUuids = await dbContext.Messages
+                    .Where(m => m.ConversationId == sessionId)
+                    .Select(m => m.Uuid)
+                    .ToHashSetAsync(cancellationToken);
+
+                Log.Information("Loaded {Count} existing UUIDs for session {SessionId} - will skip duplicates in memory",
+                    existingUuids.Count, sessionId);
+
                 while (!reader.EndOfStream)
                 {
                     // Check cancellation
@@ -819,6 +1115,9 @@ namespace ClaudeCodeMAUI.Services
 
                     var line = await reader.ReadLineAsync();
                     lineNumber++;
+
+                    progressCallback?.Report((lineNumber, totalLines));
+
 
                     if (string.IsNullOrWhiteSpace(line))
                     {
@@ -831,49 +1130,47 @@ namespace ClaudeCodeMAUI.Services
 
                     // RILEVA CAMPI SCONOSCIUTI - CHIEDE ALL'UTENTE COSA FARE
                     //var unknownFields = DetectUnknownFields(root, knownFields);
-                    List<String>? unknownFields = []; //Disabilitato permanentemente
-                    if (unknownFields.Count > 0 )  
-                    {
-                        string contentunknown = ExtractBasicContent(root);
-                        var messageUuid = root.TryGetProperty("uuid", out var u) ? u.GetString() : "unknown";
-                        result.UnknownFieldsByMessage[messageUuid] = unknownFields;
-                        result.SkippedCount++;
+                    //List<String>? unknownFields = []; //Disabilitato permanentemente
+                    //if (unknownFields.Count > 0 )  
+                    //{
+                    //    string contentunknown = ExtractBasicContent(root);
+                    //    var messageUuid = root.TryGetProperty("uuid", out var u) ? u.GetString() : "unknown";
+                    //    result.UnknownFieldsByMessage[messageUuid] = unknownFields;
+                    //    result.SkippedCount++;
 
-                        Log.Warning("Unknown fields found in message {Uuid}: {Fields}",
-                            messageUuid, string.Join(", ", unknownFields));
+                    //    Log.Warning("Unknown fields found in message {Uuid}: {Fields}",
+                    //        messageUuid, string.Join(", ", unknownFields));
 
-                        // Chiama callback per mostrare dialog e decidere se continuare
-                        if (unknownFieldsCallback != null)
-                        {
-                            bool shouldContinue = await unknownFieldsCallback(line, messageUuid ?? "unknown", unknownFields);
-                            if (!shouldContinue)
-                            {
-                                Log.Information("Import interrupted by user at message {Uuid}", messageUuid);
-                                throw new OperationCanceledException("Import interrotto dall'utente");
-                            }
-                        }
+                    //    // Chiama callback per mostrare dialog e decidere se continuare
+                    //    if (unknownFieldsCallback != null)
+                    //    {
+                    //        bool shouldContinue = await unknownFieldsCallback(line, messageUuid ?? "unknown", unknownFields);
+                    //        if (!shouldContinue)
+                    //        {
+                    //            Log.Information("Import interrupted by user at message {Uuid}", messageUuid);
+                    //            throw new OperationCanceledException("Import interrotto dall'utente");
+                    //        }
+                    //    }
 
-                        progressCallback?.Report((lineNumber, totalLines));
-                        continue; // SKIP questo messaggio ma CONTINUA con i successivi
-                    }
+                    //    progressCallback?.Report((lineNumber, totalLines));
+                    //    continue; // SKIP questo messaggio ma CONTINUA con i successivi
+                    //}
 
                     // NESSUN FILTRO - salva TUTTI i tipi
-                    var type = root.GetProperty("type").GetString();
 
+
+                    
+
+                    var type = root.GetProperty("type").GetString();
+                    //continue;
                     // Estrai metadati base
                     var uuid = root.TryGetProperty("uuid", out var uuidProp) ? uuidProp.GetString() : null;
                     var timestamp = root.TryGetProperty("timestamp", out var tProp)
                         ? DateTime.Parse(tProp.GetString())
                         : DateTime.UtcNow;
 
-                    // Verifica se già presente (via uuid)
-                    if (!string.IsNullOrEmpty(uuid) && await MessageExistsByUuidAsync(uuid))
-                    {
-                        //Log.Debug("Message with UUID {Uuid} already exists, skipping", uuid);
-                        progressCallback?.Report((lineNumber, totalLines));
-                        continue;
-                    }
 
+                    //continue;
                     // Estrai TUTTI i metadata completi (sia snake_case che camelCase)
                     string? parentUuid = root.TryGetProperty("parent_uuid", out var pu1) ? pu1.GetString() :
                                         root.TryGetProperty("parentUuid", out var pu2) ? pu2.GetString() : null;
@@ -889,7 +1186,7 @@ namespace ClaudeCodeMAUI.Services
                     string? requestId = null;
                     string? model = null;
                     string? usageJson = null;
-
+                    //continue;
                     // Per messaggi assistant, estrai requestId, model e usage
                     if (root.TryGetProperty("message", out var messageProp))
                     {
@@ -907,10 +1204,121 @@ namespace ClaudeCodeMAUI.Services
 
                     // Estrai contenuto
                     string content = ExtractBasicContent(root);
-                   
-                    // Salva nel DB con TUTTI i metadata (modalità batch: passa dbContext)
+
+
+                    // Check se è un messaggio di tipo "summary" - gestione speciale
+                    if (type == "summary")
+                    {
+                        try
+                        {
+                            // Parse del content JSON per estrarre il campo "summary"
+                            var contentJson = JsonDocument.Parse(content);
+                            var summaryText = contentJson.RootElement.GetProperty("summary").GetString();
+                            var leafUuid = contentJson.RootElement.TryGetProperty("leafUuid", out var leafUuidProp)
+                                ? leafUuidProp.GetString()
+                                : null;
+
+                            // Salva nella tabella summaries (NON in messages)
+                            SaveSummary(dbContext, sessionId, timestamp, summaryText ?? "", leafUuid);
+
+                            result.ImportedCount++;
+                            Log.Debug("Saved summary for session {SessionId}: {Summary}", sessionId, summaryText);
+                        }
+                        catch (Exception ex)
+                        {
+                            Log.Warning(ex, "Failed to parse summary content at line {LineNumber}: {Content}",
+                                lineNumber, content);
+                            result.SkippedCount++;
+                        }
+
+                        // Skip SaveMessageAsync per i summary
+                        progressCallback?.Report((lineNumber, totalLines));
+                        continue;
+                    }
+
+                    // Check se è un messaggio di tipo "file-history-snapshot" - gestione speciale
+                    if (type == "file-history-snapshot")
+                    {
+                        try
+                        {
+                            // Parse del content JSON per estrarre i campi necessari
+                            var contentJson = JsonDocument.Parse(content);
+                            var messageId = contentJson.RootElement.GetProperty("messageId").GetString() ?? "";
+                            var isSnapshotUpdate = contentJson.RootElement.TryGetProperty("isSnapshotUpdate", out var isuProp)
+                                && isuProp.GetBoolean();
+
+                            // Estrai snapshot.trackedFileBackups come JSON string
+                            string trackedFileBackupsJson = "{}";
+                            if (contentJson.RootElement.TryGetProperty("snapshot", out var snapshotProp))
+                            {
+                                if (snapshotProp.TryGetProperty("trackedFileBackups", out var tfbProp))
+                                {
+                                    trackedFileBackupsJson = tfbProp.GetRawText();
+                                }
+                            }
+
+                            // Salva nella tabella file_history_snapshots (NON in messages)
+                            SaveFileHistorySnapshot(dbContext, sessionId, timestamp, messageId,
+                                trackedFileBackupsJson, isSnapshotUpdate);
+
+                            result.ImportedCount++;
+                            Log.Debug("Saved file history snapshot for session {SessionId}: messageId={MessageId}",
+                                sessionId, messageId);
+                        }
+                        catch (Exception ex)
+                        {
+                            Log.Warning(ex, "Failed to parse file-history-snapshot content at line {LineNumber}: {Content}",
+                                lineNumber, content);
+                            result.SkippedCount++;
+                        }
+
+                        // Skip SaveMessageAsync per i file-history-snapshot
+                        progressCallback?.Report((lineNumber, totalLines));
+                        continue;
+                    }
+
+                    // Check se è un messaggio di tipo "queue-operation" - gestione speciale
+                    if (type == "queue-operation")
+                    {
+                        try
+                        {
+                            // Parse del content JSON per estrarre i campi necessari
+                            var contentJson = JsonDocument.Parse(content);
+                            var operation = contentJson.RootElement.TryGetProperty("operation", out var opProp)
+                                ? opProp.GetString() ?? ""
+                                : "";
+                            var queueContent = contentJson.RootElement.TryGetProperty("content", out var contentProp)
+                                ? contentProp.GetString() ?? ""
+                                : "";
+
+                            // Salva nella tabella queue_operations (NON in messages)
+                            SaveQueueOperation(dbContext, sessionId, timestamp, operation, queueContent);
+
+                            result.ImportedCount++;
+                            Log.Debug("Saved queue operation for session {SessionId}: operation={Operation}",
+                                sessionId, operation);
+                        }
+                        catch (Exception ex)
+                        {
+                            Log.Warning(ex, "Failed to parse queue-operation content at line {LineNumber}: {Content}",
+                                lineNumber, content);
+                            result.SkippedCount++;
+                        }
+
+                        // Skip SaveMessageAsync per i queue-operation
+                        progressCallback?.Report((lineNumber, totalLines));
+                        continue;
+                    }
+
+                    if (uuid == null)
+                    {
+                        Debugger.Break();
+                    }
+
+                    // Salva nel DB con TUTTI i metadata (modalità batch: passa existingUuids e dbContext)
                     await SaveMessageAsync(
-                        dbContext,
+                        existingUuids,  // HashSet per evitare duplicati
+                        dbContext,      // DbContext condiviso per batch
                         sessionId,
                         type ?? "unknown",
                         content,
@@ -932,9 +1340,11 @@ namespace ClaudeCodeMAUI.Services
                     // Report progress
                     progressCallback?.Report((lineNumber, totalLines));
                 }
-                await dbContext.SaveChangesAsync();
-                Log.Information("Import completed: {Imported} imported, {Skipped} skipped, {UnknownCount} with unknown fields",
-                    result.ImportedCount, result.SkippedCount, result.MessagesWithUnknownFieldsCount);
+
+                // Salva con diagnostica e transazione automatica
+                progressCallback?.Report((lineNumber, totalLines));
+                var affectedRows = await dbContext.SaveChangesAsync();
+
 
                 return result;
             }

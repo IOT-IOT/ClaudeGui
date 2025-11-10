@@ -44,6 +44,7 @@ namespace ClaudeCodeMAUI.Services
         public event EventHandler<ProcessCompletedEventArgs>? ProcessCompleted;
         public event EventHandler<string>? ErrorReceived;
         public event EventHandler<bool>? IsRunningChanged;
+        public event EventHandler? ResponseCompleted;
 
         /// <summary>
         /// Constructor
@@ -133,8 +134,11 @@ namespace ClaudeCodeMAUI.Services
             args.Append("--output-format stream-json ");
             args.Append("--verbose ");
             args.Append("--dangerously-skip-permissions ");
+            args.Append("--replay-user-messages ");
             //args.Append("--include-partial-messages ");
-            
+
+             
+
             //args.Append("--context-mode auto-compact "); // Gestione automatica del contesto con compattazione
 
             if (!string.IsNullOrEmpty(_sessionId))
@@ -201,6 +205,11 @@ namespace ClaudeCodeMAUI.Services
                     if (!string.IsNullOrWhiteSpace(line))
                     {
                         JsonLineReceived?.Invoke(this, new JsonLineReceivedEventArgs { JsonLine = line });
+                        if (line.StartsWith("{\"type\":\"result\","))
+                        {
+                            PlayBeep();
+                            ResponseCompleted?.Invoke(this, EventArgs.Empty);
+                        }
                     }
                 }
             }
@@ -400,11 +409,27 @@ namespace ClaudeCodeMAUI.Services
             ProcessCompleted = null;
             ErrorReceived = null;
             IsRunningChanged = null;
+            ResponseCompleted = null;
 
             _stdinWriter?.Dispose();
             _process?.Dispose();
 
             GC.SuppressFinalize(this);
+        }
+
+        /// <summary>
+        /// Plays a simple beep sound (cross-platform).
+        /// </summary>
+        private void PlayBeep()
+        {
+            try
+            {
+                Console.Beep();
+            }
+            catch
+            {
+                // On platforms where Console.Beep is not supported, ignore errors.
+            }
         }
     }
 }

@@ -145,6 +145,9 @@ namespace ClaudeCodeMAUI.Views
                     WorkingDirectoryPicker.SelectedItem = SelectedWorkingDir;
                 }
 
+                // Forza l'aggiornamento della vista corrente (anche se SelectedWorkingDir non è cambiato)
+                UpdateCurrentSessions();
+
                 Log.Information("Loaded {AllCount} working directories, showing top {TopCount} in carousel",
                     AllWorkingDirectories.Count, TopWorkingDirectories.Count);
             }

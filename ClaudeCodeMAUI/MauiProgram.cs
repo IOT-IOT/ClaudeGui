@@ -44,6 +44,10 @@ public static class MauiProgram
 		builder.Logging.ClearProviders();
 		builder.Logging.AddSerilog(Log.Logger);
 
+		// Filtro logging Entity Framework - disabilita log SQL queries verbose
+		builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
+		builder.Logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.Warning);
+
 		Log.Information("========================================");
 		Log.Information("ClaudeCodeMAUI Application Starting");
 		Log.Information("========================================");
@@ -70,8 +74,10 @@ public static class MauiProgram
 					mySqlOptions.CommandTimeout(30);
 				});
 
-				// Abilita logging dettagliato per SQL queries in DEBUG
-#if DEBUG
+				// Abilita logging dettagliato per SQL queries SOLO se VERBOSE_EF_LOGGING è definito
+				// Per attivarlo: aggiungi <DefineConstants>VERBOSE_EF_LOGGING</DefineConstants> nel .csproj
+				// o compila con: dotnet build /p:DefineConstants="DEBUG;VERBOSE_EF_LOGGING"
+#if DEBUG && VERBOSE_EF_LOGGING
 				options.EnableSensitiveDataLogging();
 				options.EnableDetailedErrors();
 #endif

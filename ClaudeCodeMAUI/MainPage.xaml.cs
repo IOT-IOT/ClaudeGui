@@ -227,6 +227,7 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
             processManager.ProcessCompleted += (s, e) => OnProcessCompleted(tabItem, e);
             processManager.ErrorReceived += (s, e) => OnErrorReceived(tabItem, e);
             processManager.IsRunningChanged += (s, isRunning) => OnIsRunningChanged(tabItem, isRunning);
+            processManager.ResponseCompleted += (s, e) => OnResponseCompleted(tabItem);
 
             tabItem.ProcessManager = processManager;
 
@@ -683,6 +684,7 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
             newProcessManager.ProcessCompleted += (s, e) => OnProcessCompleted(_currentTab, e);
             newProcessManager.ErrorReceived += (s, e) => OnErrorReceived(_currentTab, e);
             newProcessManager.IsRunningChanged += (s, isRunning) => OnIsRunningChanged(_currentTab, isRunning);
+            newProcessManager.ResponseCompleted += (s, e) => OnResponseCompleted(_currentTab);
 
             _currentTab.ProcessManager = newProcessManager;
 
@@ -773,6 +775,9 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
 
             // Invia il messaggio al processo Claude
             await _currentTab.ProcessManager.SendMessageAsync(message);
+
+            // Imposta il cursore a busy/wait mentre Claude elabora la risposta
+            SetBusyCursor(true);
 
             //// Mostra SUBITO il messaggio utente nella WebView (feedback immediato)
             //await AppendMessageToWebViewAsync(_currentTab, "user", message);
@@ -1026,11 +1031,6 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
             var type = root.GetProperty("type").GetString();
             //Log.Debug("[{SessionId}] Received: {Type}", tabItem.SessionId.Substring(0, 8), type);
 
-            // Riproduci beep per metadata/summary se abilitato nelle impostazioni
-            if ((type == "summary" || type == "metadata") && _settingsService?.PlayBeepOnMetadata == true)
-            {
-                PlayBeep();
-            }
 
             // PRIMA: Aggiorna WebView immediatamente (dal JSON già in memoria - nessun round-trip DB)
             if (type == "user" || type == "assistant")
@@ -1055,7 +1055,7 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Failed to process message line from file");
+            //Log.Error(ex, "Failed to process message line from file");
         }
     }
 
@@ -1280,9 +1280,100 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
                 Debugger.Break();
             }
 
-            // Salva con tutti i metadata (modalità standalone: passa null per auto-save)
-            await _dbService.SaveMessageAsync(
-                null,
+            // Check se è un messaggio di tipo "summary" - gestione speciale
+            if (type == "summary")
+            {
+                try
+                {
+                    // Parse del content JSON per estrarre il campo "summary"
+                    var contentJson = JsonDocument.Parse(content);
+                    var summaryText = contentJson.RootElement.GetProperty("summary").GetString();
+                    var leafUuid = contentJson.RootElement.TryGetProperty("leafUuid", out var leafUuidProp)
+                        ? leafUuidProp.GetString()
+                        : null;
+
+                    // Salva nella tabella summaries (NON in messages)
+                    await _dbService.SaveSummaryStandaloneAsync(sessionId, timestamp, summaryText ?? "", leafUuid);
+
+                    Log.Debug("Saved summary for session {SessionId}: {Summary}", sessionId, summaryText);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "Failed to parse summary content: {Content}", content);
+                }
+
+                // Skip SaveMessageStandaloneAsync per i summary
+                return;
+            }
+
+            // Check se è un messaggio di tipo "file-history-snapshot" - gestione speciale
+            if (type == "file-history-snapshot")
+            {
+                try
+                {
+                    // Parse del content JSON per estrarre i campi necessari
+                    var contentJson = JsonDocument.Parse(content);
+                    var messageId = contentJson.RootElement.GetProperty("messageId").GetString() ?? "";
+                    var isSnapshotUpdate = contentJson.RootElement.TryGetProperty("isSnapshotUpdate", out var isuProp)
+                        && isuProp.GetBoolean();
+
+                    // Estrai snapshot.trackedFileBackups come JSON string
+                    string trackedFileBackupsJson = "{}";
+                    if (contentJson.RootElement.TryGetProperty("snapshot", out var snapshotProp))
+                    {
+                        if (snapshotProp.TryGetProperty("trackedFileBackups", out var tfbProp))
+                        {
+                            trackedFileBackupsJson = tfbProp.GetRawText();
+                        }
+                    }
+
+                    // Salva nella tabella file_history_snapshots (NON in messages)
+                    await _dbService.SaveFileHistorySnapshotStandaloneAsync(sessionId, timestamp, messageId,
+                        trackedFileBackupsJson, isSnapshotUpdate);
+
+                    Log.Debug("Saved file history snapshot for session {SessionId}: messageId={MessageId}",
+                        sessionId, messageId);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "Failed to parse file-history-snapshot content: {Content}", content);
+                }
+
+                // Skip SaveMessageStandaloneAsync per i file-history-snapshot
+                return;
+            }
+
+            // Check se è un messaggio di tipo "queue-operation" - gestione speciale
+            if (type == "queue-operation")
+            {
+                try
+                {
+                    // Parse del content JSON per estrarre i campi necessari
+                    var contentJson = JsonDocument.Parse(content);
+                    var operation = contentJson.RootElement.TryGetProperty("operation", out var opProp)
+                        ? opProp.GetString() ?? ""
+                        : "";
+                    var queueContent = contentJson.RootElement.TryGetProperty("content", out var contentProp)
+                        ? contentProp.GetString() ?? ""
+                        : "";
+
+                    // Salva nella tabella queue_operations (NON in messages)
+                    await _dbService.SaveQueueOperationStandaloneAsync(sessionId, timestamp, operation, queueContent);
+
+                    Log.Debug("Saved queue operation for session {SessionId}: operation={Operation}",
+                        sessionId, operation);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "Failed to parse queue-operation content: {Content}", content);
+                }
+
+                // Skip SaveMessageStandaloneAsync per i queue-operation
+                return;
+            }
+
+            // Salva con tutti i metadata in modalità standalone (auto-save con DbContext dedicato)
+            await _dbService.SaveMessageStandaloneAsync(
                 sessionId,
                 type,
                 content,
@@ -1388,23 +1479,111 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
     }
 
     /// <summary>
+    /// Handler per l'evento ResponseCompleted: chiamato quando Claude completa una risposta.
+    /// Ripristina il cursore normale dopo che l'elaborazione è completa.
+    /// </summary>
+    private void OnResponseCompleted(SessionTabItem tabItem)
+    {
+        Log.Debug("[{SessionId}] Response completed, restoring cursor", tabItem.SessionId);
+
+        // Ripristina il cursore normale (deve essere eseguito sul main thread)
+        SetBusyCursor(false);
+    }
+
+    /// <summary>
+    /// Imposta il cursore a busy/wait (clessidra) o lo ripristina a normale.
+    /// Usa reflection con InvokeMember per accedere alla proprietà protetta ProtectedCursor su WinUI3.
+    /// Imposta il cursore su window.Content (root element) per garantire che sia visibile.
+    /// Specifico per Windows. Su altre piattaforme logga ma non cambia il cursore.
+    /// </summary>
+    /// <param name="isBusy">True per impostare cursore busy, false per ripristinare normale</param>
+    private void SetBusyCursor(bool isBusy)
+    {
+        try
+        {
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+#if WINDOWS
+                try
+                {
+                    // Ottieni la Window platform-specific
+                    var window = Application.Current?.Windows?.FirstOrDefault()?.Handler?.PlatformView as Microsoft.UI.Xaml.Window;
+
+                    if (window?.Content is Microsoft.UI.Xaml.UIElement rootElement)
+                    {
+                        // Crea il cursore appropriato usando Microsoft.UI.Input.InputCursor
+                        Microsoft.UI.Input.InputCursor cursor;
+
+                        if (isBusy)
+                        {
+                            // Cursore Wait (clessidra)
+                            cursor = Microsoft.UI.Input.InputSystemCursor.Create(
+                                Microsoft.UI.Input.InputSystemCursorShape.Wait);
+                            Log.Debug("Setting cursor to Wait (busy)");
+                        }
+                        else
+                        {
+                            // Cursore normale (Arrow)
+                            cursor = Microsoft.UI.Input.InputSystemCursor.Create(
+                                Microsoft.UI.Input.InputSystemCursorShape.Arrow);
+                            Log.Debug("Resetting cursor to Arrow (normal)");
+                        }
+
+                        // Usa reflection con InvokeMember per accedere a ProtectedCursor (proprietà protetta)
+                        // Questo è l'approccio raccomandato dalla community per WinUI3
+                        typeof(Microsoft.UI.Xaml.UIElement).InvokeMember(
+                            "ProtectedCursor",
+                            System.Reflection.BindingFlags.Public |
+                            System.Reflection.BindingFlags.NonPublic |
+                            System.Reflection.BindingFlags.SetProperty |
+                            System.Reflection.BindingFlags.Instance,
+                            null,
+                            rootElement,
+                            new object[] { cursor }
+                        );
+
+                        Log.Debug("Cursor set successfully via InvokeMember on window.Content (isBusy: {IsBusy})", isBusy);
+                    }
+                    else
+                    {
+                        Log.Warning("Window or window.Content is null, cannot set cursor. Window: {Window}, Content: {Content}",
+                            window != null, window?.Content != null);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "Exception setting cursor on Windows via reflection");
+                }
+#else
+                Log.Debug("SetBusyCursor called but not supported on this platform (isBusy: {IsBusy})", isBusy);
+#endif
+            });
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Failed to set cursor state (isBusy: {IsBusy})", isBusy);
+        }
+    }
+
+    /// <summary>
     /// Riproduce un beep sonoro per notificare l'arrivo di metadata/summary.
     /// Funziona solo su Windows. Su altre piattaforme logga un warning.
     /// </summary>
-    private void PlayBeep()
+    public void PlayBeep()
     {
         try
         {
 #if WINDOWS
-            System.Console.Beep(800, 200); // Frequenza 800Hz, durata 200ms
-            Log.Debug("Beep played for metadata/summary received");
+            if (_settingsService?.PlayBeepOnMetadata == true)            
+                System.Console.Beep(800, 200); // Frequenza 800Hz, durata 200ms
+            //Log.Debug("Beep played for metadata/summary received");
 #else
-            Log.Debug("Beep requested but not supported on this platform");
+            //Log.Debug("Beep requested but not supported on this platform");
 #endif
         }
         catch (Exception ex)
         {
-            Log.Warning(ex, "Failed to play beep sound");
+            //Log.Warning(ex, "Failed to play beep sound");
         }
     }
 

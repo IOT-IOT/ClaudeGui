@@ -4,7 +4,7 @@ namespace ClaudeCodeMAUI.Models.Entities;
 
 /// <summary>
 /// DbContext per il database ClaudeGui.
-/// Gestisce le entity Sessions, Messages e Conversations (legacy).
+/// Gestisce le entity Sessions, Messages, Summaries e Conversations (legacy).
 /// </summary>
 public class ClaudeGuiDbContext : DbContext
 {
@@ -17,6 +17,21 @@ public class ClaudeGuiDbContext : DbContext
     /// Tabella Messages
     /// </summary>
     public DbSet<Message> Messages { get; set; }
+
+    /// <summary>
+    /// Tabella Summaries (riepiloghi generati da Claude)
+    /// </summary>
+    public DbSet<Summary> Summaries { get; set; }
+
+    /// <summary>
+    /// Tabella FileHistorySnapshots (snapshot cronologia file tracciati)
+    /// </summary>
+    public DbSet<FileHistorySnapshot> FileHistorySnapshots { get; set; }
+
+    /// <summary>
+    /// Tabella QueueOperations (operazioni di accodamento messaggi)
+    /// </summary>
+    public DbSet<QueueOperation> QueueOperations { get; set; }
 
     /// <summary>
     /// Tabella Conversations (legacy, deprecata)
@@ -79,6 +94,72 @@ public class ClaudeGuiDbContext : DbContext
 
             entity.Property(e => e.Timestamp)
                 .HasDefaultValueSql("CURRENT_TIMESTAMP");
+        });
+
+        // Configurazione Summary
+        modelBuilder.Entity<Summary>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.HasIndex(e => e.SessionId)
+                .HasDatabaseName("idx_summaries_session_id");
+
+            entity.HasIndex(e => e.LeafUuid)
+                .HasDatabaseName("idx_summaries_leaf_uuid");
+
+            entity.HasIndex(e => e.Timestamp)
+                .HasDatabaseName("idx_summaries_timestamp");
+
+            // Foreign Key verso Sessions (usando session_id come chiave)
+            entity.HasOne(s => s.Session)
+                .WithMany()
+                .HasForeignKey(s => s.SessionId)
+                .HasPrincipalKey(s => s.SessionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Configurazione FileHistorySnapshot
+        modelBuilder.Entity<FileHistorySnapshot>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.HasIndex(e => e.SessionId)
+                .HasDatabaseName("idx_file_history_snapshots_session_id");
+
+            entity.HasIndex(e => e.MessageId)
+                .HasDatabaseName("idx_file_history_snapshots_message_id");
+
+            entity.HasIndex(e => e.Timestamp)
+                .HasDatabaseName("idx_file_history_snapshots_timestamp");
+
+            // Foreign Key verso Sessions (usando session_id come chiave)
+            entity.HasOne(f => f.Session)
+                .WithMany()
+                .HasForeignKey(f => f.SessionId)
+                .HasPrincipalKey(s => s.SessionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Configurazione QueueOperation
+        modelBuilder.Entity<QueueOperation>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.HasIndex(e => e.SessionId)
+                .HasDatabaseName("idx_queue_operations_session_id");
+
+            entity.HasIndex(e => e.Operation)
+                .HasDatabaseName("idx_queue_operations_operation");
+
+            entity.HasIndex(e => e.Timestamp)
+                .HasDatabaseName("idx_queue_operations_timestamp");
+
+            // Foreign Key verso Sessions (usando session_id come chiave)
+            entity.HasOne(q => q.Session)
+                .WithMany()
+                .HasForeignKey(q => q.SessionId)
+                .HasPrincipalKey(s => s.SessionId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         // Configurazione Conversation (legacy)

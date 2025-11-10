@@ -59,52 +59,79 @@ namespace ClaudeCodeMAUI.Services
         }
 
         /// <summary>
-        /// Controlla se il primo record JSON del file contiene un type da escludere.
-        /// Tipi esclusi: "summary", "file-history-snapshot", "queue-operation"
-        /// Legge solo la prima riga per massima efficienza.
+        /// Controlla se il file contiene messaggi normali (user/assistant) o solo messaggi speciali.
+        /// Tipi speciali da escludere: "summary", "file-history-snapshot", "queue-operation"
+        /// Legge le prime 10 righe per verificare se c'è almeno un messaggio normale.
         /// I file JSONL hanno un record JSON per riga.
         /// </summary>
         /// <param name="jsonlFilePath">Path completo del file .jsonl</param>
-        /// <returns>Tupla (isExcluded, excludedReason): (true, "summary") se summary, (true, "file-history-snapshot") se file-history-snapshot, (true, "queue-operation") se queue-operation, (false, null) altrimenti</returns>
+        /// <returns>Tupla (isExcluded, excludedReason): (true, reason) se contiene solo messaggi speciali, (false, null) se contiene almeno un messaggio normale</returns>
         private async Task<(bool isExcluded, string? reason)> CheckIfExcludedSessionAsync(string jsonlFilePath)
         {
             try
             {
-                // Leggi solo la PRIMA riga (JSONL = una riga per record)
                 using var reader = new StreamReader(jsonlFilePath);
-                var firstLine = await reader.ReadLineAsync();
 
-                if (string.IsNullOrWhiteSpace(firstLine))
+                int linesRead = 0;
+                bool hasNormalMessage = false;
+                string? firstSpecialType = null;
+
+                // Leggi fino a 10 righe per cercare messaggi normali
+                while (linesRead < 10 && !reader.EndOfStream)
                 {
-                    Log.Debug("Empty first line in file: {File}", jsonlFilePath);
+                    var line = await reader.ReadLineAsync();
+                    linesRead++;
+
+                    if (string.IsNullOrWhiteSpace(line))
+                        continue;
+
+                    try
+                    {
+                        // Parse JSON
+                        var json = JsonDocument.Parse(line);
+
+                        // Controlla se type è presente
+                        if (json.RootElement.TryGetProperty("type", out var typeProperty))
+                        {
+                            var type = typeProperty.GetString();
+
+                            // Se troviamo un messaggio normale (user o assistant), il file NON deve essere escluso
+                            if (type == "user" || type == "assistant")
+                            {
+                                hasNormalMessage = true;
+                                break; // Trovato almeno un messaggio normale, nessuna esclusione necessaria
+                            }
+
+                            // Traccia il primo tipo speciale trovato
+                            if (firstSpecialType == null &&
+                                (type == "summary" || type == "file-history-snapshot" || type == "queue-operation"))
+                            {
+                                firstSpecialType = type;
+                            }
+                        }
+                    }
+                    catch (JsonException ex)
+                    {
+                        Log.Debug(ex, "Failed to parse line {LineNum} in file: {File}", linesRead, jsonlFilePath);
+                        // Continua con la prossima riga
+                    }
+                }
+
+                // Se abbiamo trovato almeno un messaggio normale, non escludere
+                if (hasNormalMessage)
+                {
                     return (false, null);
                 }
 
-                // Parse JSON
-                var json = JsonDocument.Parse(firstLine);
-
-                // Controlla se type è da escludere
-                if (json.RootElement.TryGetProperty("type", out var typeProperty))
+                // Se abbiamo letto almeno una riga e NON abbiamo trovato messaggi normali,
+                // ma abbiamo trovato solo messaggi speciali, escludi il file
+                if (firstSpecialType != null)
                 {
-                    var type = typeProperty.GetString();
-
-                    if (type == "summary")
-                    {
-                        Log.Information("Session excluded (summary): {File}", Path.GetFileName(jsonlFilePath));
-                        return (true, "summary");
-                    }
-                    else if (type == "file-history-snapshot")
-                    {
-                        Log.Information("Session excluded (file-history-snapshot): {File}", Path.GetFileName(jsonlFilePath));
-                        return (true, "file-history-snapshot");
-                    }
-                    else if (type == "queue-operation")
-                    {
-                        Log.Information("Session excluded (queue-operation): {File}", Path.GetFileName(jsonlFilePath));
-                        return (true, "queue-operation");
-                    }
+                    Log.Information("Session excluded ({Type}): {File}", firstSpecialType, Path.GetFileName(jsonlFilePath));
+                    return (true, firstSpecialType);
                 }
 
+                // File vuoto o senza type riconoscibili → non escludere (safe default)
                 return (false, null);
             }
             catch (Exception ex)

@@ -26,10 +26,10 @@ public class Message
     public string ConversationId { get; set; } = null!;
 
     /// <summary>
-    /// Contenuto testuale del messaggio
+    /// Contenuto testuale del messaggio (supporta fino a 16MB con MEDIUMTEXT)
     /// </summary>
     [Required]
-    [Column("content", TypeName = "TEXT")]
+    [Column("content", TypeName = "MEDIUMTEXT")]
     public string Content { get; set; } = null!;
 
     /// <summary>
