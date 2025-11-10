@@ -40,6 +40,8 @@ namespace ClaudeCodeMAUI.Views
         /// </summary>
         public Session? SelectedSession { get; private set; }
 
+        public bool isNewSession  { get; private set; }
+
         /// <summary>
         /// TaskCompletionSource per gestire l'attesa della selezione
         /// </summary>
@@ -521,34 +523,30 @@ namespace ClaudeCodeMAUI.Views
             try
             {
                 Log.Information("Opening NewSessionDialog...");
-                var newSessionDialog = new NewSessionDialog();
+
+                // Crea il dialog passando un callback che assegna SelectedSession
+                var newSessionDialog = new NewSessionDialog(session =>
+                {
+                    Log.Information("New session created via callback: Name={Name}, WorkingDirectory={WorkingDirectory}",
+                        session.Name, session.WorkingDirectory);
+                    SelectedSession = session;
+                });
+
                 // WORKAROUND: NO NavigationPage wrapper
                 await Navigation.PushModalAsync(newSessionDialog);
                 Log.Information("NewSessionDialog shown, waiting for CompletionTask...");
 
                 // Aspetta che il dialog venga chiuso (CompletionTask)
                 var completed = await newSessionDialog.CompletionTask;
-                Log.Information("NewSessionDialog CompletionTask completed: {Completed}, WasSessionCreated: {WasCreated}",
-                    completed, newSessionDialog.WasSessionCreated);
+                Log.Information("NewSessionDialog CompletionTask completed: {Completed}", completed);
 
-                // Quando il dialog viene chiuso, controlla se l'utente ha creato una nuova sessione
-                if (newSessionDialog.WasSessionCreated && newSessionDialog.CreatedSession != null)
+                // Se una sessione è stata creata (callback invocato), chiudi SessionSelectorPage
+                if (SelectedSession != null)
                 {
-                    Log.Information("New session created: Name={Name}, WorkingDirectory={WorkingDirectory}",
-                        newSessionDialog.CreatedSession.Name,
-                        newSessionDialog.CreatedSession.WorkingDirectory);
-
-                    // Usa direttamente la Session entity creata dal NewSessionDialog
-                    // NOTA: SessionId verrà generato dal MainPage quando avvia il processo Claude
-                    var newSession = newSessionDialog.CreatedSession;
-
                     Log.Information("Setting SelectionTask result with new session...");
-                    // Imposta il risultato del SelectionTask con la nuova sessione
-                    SelectedSession = newSession;
-                    _selectionCompletionSource.TrySetResult(newSession);
+                    _selectionCompletionSource.TrySetResult(SelectedSession);
 
                     // Chiudi QUESTO SessionSelectorPage immediatamente
-                    // MainPage non deve chiudere perché lo facciamo già qui
                     Log.Information("SessionSelectorPage closing itself after new session creation");
                     await Navigation.PopModalAsync();
                     Log.Information("SessionSelectorPage closed itself");

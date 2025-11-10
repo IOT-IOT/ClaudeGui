@@ -16,25 +16,21 @@ namespace ClaudeCodeMAUI.Views
     public partial class NewSessionDialog : ContentPage
     {
         private readonly TaskCompletionSource<bool> _completionSource = new TaskCompletionSource<bool>();
-
-        /// <summary>
-        /// Indica se l'utente ha creato una nuova sessione (true) o ha cancellato (false)
-        /// </summary>
-        public bool WasSessionCreated { get; private set; } = false;
-
-        /// <summary>
-        /// Informazioni della sessione creata (null se l'utente ha cancellato)
-        /// </summary>
-        public Session? CreatedSession { get; private set; }
+        private readonly Action<Session>? _onSessionCreated;
 
         /// <summary>
         /// Task che completa quando il dialog viene chiuso (con o senza creazione sessione)
         /// </summary>
         public Task<bool> CompletionTask => _completionSource.Task;
 
-        public NewSessionDialog()
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="onSessionCreated">Callback invocato quando viene creata una nuova sessione</param>
+        public NewSessionDialog(Action<Session>? onSessionCreated = null)
         {
             InitializeComponent();
+            _onSessionCreated = onSessionCreated;
 
             // Monitora i cambiamenti nei campi per abilitare/disabilitare il pulsante Create
             NameEntry.TextChanged += OnFieldChanged;
@@ -136,40 +132,13 @@ namespace ClaudeCodeMAUI.Views
                     return;
                 }
 
-                // Validazione: verifica che la directory esista
-                if (!Directory.Exists(workingDirectory))
-                {
-                    var createIt = await this.DisplaySelectableAlert(
-                        "Directory non trovata",
-                        $"La directory '{workingDirectory}' non esiste.\n\nVuoi crearla?",
-                        "Sì, crea",
-                        "No, annulla");
 
-                    if (createIt)
-                    {
-                        try
-                        {
-                            Directory.CreateDirectory(workingDirectory);
-                            Log.Information("Created working directory: {Path}", workingDirectory);
-                        }
-                        catch (Exception ex)
-                        {
-                            Log.Error(ex, "Failed to create working directory: {Path}", workingDirectory);
-                            await this.DisplaySelectableAlert("Errore", $"Impossibile creare la directory:\n{ex.Message}", "OK");
-                            return;
-                        }
-                    }
-                    else
-                    {
-                        return; // L'utente ha annullato
-                    }
-                }
 
                 Log.Information("Creating new session: Name={Name}, WorkingDirectory={WorkingDirectory}", name, workingDirectory);
 
                 // Crea un oggetto Session per rappresentare la nuova sessione
                 // NOTA: Il SessionId verrà generato dal processo Claude quando viene avviato
-                CreatedSession = new Session
+                var newSession = new Session
                 {
                     SessionId = string.Empty, // Verrà popolato dal sistema quando il processo Claude viene avviato
                     Name = name,
@@ -181,7 +150,9 @@ namespace ClaudeCodeMAUI.Views
                     Excluded = false
                 };
 
-                WasSessionCreated = true;
+                // Notifica al chiamante che la sessione è stata creata
+                _onSessionCreated?.Invoke(newSession);
+
                 _completionSource.TrySetResult(true);
                 await Navigation.PopModalAsync();
             }
@@ -199,8 +170,6 @@ namespace ClaudeCodeMAUI.Views
         private async void OnCancelClicked(object? sender, EventArgs e)
         {
             Log.Information("New session dialog cancelled by user");
-            WasSessionCreated = false;
-            CreatedSession = null;
             _completionSource.TrySetResult(false);
             await Navigation.PopModalAsync();
         }

@@ -587,20 +587,28 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
                     return;
 
                 // Mostra dialog per nuova sessione
-                var newSessionDialog = new NewSessionDialog();
+                Session? createdSession = null;
+                var newSessionDialog = new NewSessionDialog(session =>
+                {
+                    createdSession = session;
+                });
                 await Navigation.PushModalAsync(new NavigationPage(newSessionDialog));
 
-                if (newSessionDialog.WasSessionCreated && newSessionDialog.CreatedSession != null)
+                // Aspetta che il dialog venga chiuso
+                await newSessionDialog.CompletionTask;
+
+                if (createdSession != null)
                 {
-                    var newSession = newSessionDialog.CreatedSession;
-                    newSession.SessionId = Guid.NewGuid().ToString();
-                    await OpenSessionInNewTabAsync(newSession, resumeExisting: false);
+                    createdSession.SessionId = Guid.NewGuid().ToString();
+                    await OpenSessionInNewTabAsync(createdSession, resumeExisting: false);
                 }
 
                 return;
             }
 
             Log.Information("Opening session selector dialog");
+
+            
 
             var selectorPage = new SessionSelectorPage(_sessionScanner, _dbService);
 
