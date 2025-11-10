@@ -637,14 +637,29 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
 
                 // Chiudi il SessionSelectorPage dopo aver aperto la sessione
                 Log.Information("Closing SessionSelectorPage...");
-                await Navigation.PopModalAsync();
-                Log.Information("SessionSelectorPage closed successfully");
+                try
+                {
+                    await Navigation.PopModalAsync();
+                    Log.Information("SessionSelectorPage closed successfully");
+                }
+                catch (Exception popEx)
+                {
+                    Log.Error(popEx, "FAILED to close SessionSelectorPage!");
+                }
             }
             else
             {
                 Log.Information("No session selected - user cancelled");
                 // Chiudi il SessionSelectorPage anche se l'utente ha cancellato
-                await Navigation.PopModalAsync();
+                try
+                {
+                    await Navigation.PopModalAsync();
+                    Log.Information("SessionSelectorPage closed after cancel");
+                }
+                catch (Exception popEx)
+                {
+                    Log.Error(popEx, "FAILED to close SessionSelectorPage after cancel!");
+                }
             }
         }
         catch (Exception ex)

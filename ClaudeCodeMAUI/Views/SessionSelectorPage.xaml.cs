@@ -554,13 +554,11 @@ namespace ClaudeCodeMAUI.Views
                     _selectionCompletionSource.TrySetResult(newSession);
 
                     // NON chiudere qui - sarà il MainPage a chiudere il SessionSelectorPage
-                    // dopo aver ricevuto il risultato tramite SelectionTask
-                    Log.Information("SelectionTask completed with new session, MainPage will close this page");
+                    // IMPORTANTE: Return immediatamente per evitare race conditions
+                    return;
                 }
-                else
-                {
-                    Log.Information("New session dialog closed without creating a session");
-                }
+
+                Log.Information("New session dialog closed without creating a session");
             }
             catch (Exception ex)
             {
@@ -609,10 +607,19 @@ namespace ClaudeCodeMAUI.Views
         private void OnCancelClicked(object? sender, EventArgs e)
         {
             Log.Information("Session selector cancelled by user");
+
+            // Controlla se il task è già completato (race condition)
+            if (_selectionCompletionSource.Task.IsCompleted)
+            {
+                Log.Warning("SelectionTask already completed, ignoring cancel click");
+                return;
+            }
+
             SelectedSession = null;
 
             // Completa il Task con null (nessuna selezione)
             // MainPage chiuderà questa pagina quando riceve null
+            Log.Information("Setting SelectionTask result to null");
             _selectionCompletionSource.TrySetResult(null);
         }
 
