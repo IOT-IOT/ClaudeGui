@@ -555,10 +555,9 @@ namespace ClaudeCodeMAUI.Views
                     SelectedSession = newSession;
                     _selectionCompletionSource.TrySetResult(newSession);
 
-                    Log.Information("Closing SessionSelectorPage...");
-                    // Chiudi il SessionSelectorPage
-                    await Navigation.PopModalAsync();
-                    Log.Information("SessionSelectorPage closed successfully");
+                    // NON chiudere qui - sarà il MainPage a chiudere il SessionSelectorPage
+                    // dopo aver ricevuto il risultato tramite SelectionTask
+                    Log.Information("SelectionTask completed with new session, MainPage will close this page");
                 }
                 else
                 {
