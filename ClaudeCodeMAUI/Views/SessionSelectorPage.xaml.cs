@@ -540,16 +540,19 @@ namespace ClaudeCodeMAUI.Views
                 var completed = await newSessionDialog.CompletionTask;
                 Log.Information("NewSessionDialog CompletionTask completed: {Completed}", completed);
 
-                // Se una sessione è stata creata (callback invocato), chiudi SessionSelectorPage
+                // Se una sessione è stata creata (callback invocato), notifica MainPage
                 if (SelectedSession != null)
                 {
                     Log.Information("Setting SelectionTask result with new session...");
+                    Log.Information("New session: Name={Name}, WorkingDirectory={WorkingDirectory}",
+                        SelectedSession.Name, SelectedSession.WorkingDirectory);
+
                     _selectionCompletionSource.TrySetResult(SelectedSession);
 
-                    // Chiudi QUESTO SessionSelectorPage immediatamente
-                    Log.Information("SessionSelectorPage closing itself after new session creation");
-                    await Navigation.PopModalAsync();
-                    Log.Information("SessionSelectorPage closed itself");
+                    // NON chiudere qui - MainPage si occuperà di:
+                    // 1. Chiudere SessionSelectorPage
+                    // 2. Aprire la nuova sessione con OpenSessionInNewTabAsync
+                    Log.Information("SessionSelectorPage completed - waiting for MainPage to close and open session");
                     return;
                 }
 
