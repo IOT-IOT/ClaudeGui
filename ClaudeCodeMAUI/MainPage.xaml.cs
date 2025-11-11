@@ -854,8 +854,8 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
 
     /// <summary>
     /// Handler per linee JSON ricevute dallo stdout del processo Claude.
-    /// IMPORTANTE: Usa stdout SOLO come trigger per leggere dal file .jsonl (source of truth).
-    /// Non usa il contenuto di jsonLine direttamente per evitare race conditions.
+    /// STEP 1: Estrae il SessionId dal primo messaggio JSON (se non ancora popolato).
+    /// STEP 2: Usa stdout come trigger per leggere messaggi dal file .jsonl (source of truth).
     /// </summary>
     private async void OnJsonLineReceived(SessionTabItem tabItem, string jsonLine)
     {
