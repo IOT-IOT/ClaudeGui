@@ -152,9 +152,9 @@ namespace ClaudeCodeMAUI.Views
 
                 // Notifica al chiamante che la sessione è stata creata
                 _onSessionCreated?.Invoke(newSession);
-
-                _completionSource.TrySetResult(true);
                 await Navigation.PopModalAsync();
+                _completionSource.TrySetResult(true);
+                
             }
             catch (Exception ex)
             {

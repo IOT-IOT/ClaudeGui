@@ -175,6 +175,13 @@ namespace ClaudeCodeMAUI.Services
                 int sessionsProcessed = 0;
                 int sessionsExcluded = 0;
 
+                // ========== CACHE: Carica tutte le sessioni dal database in memoria ==========
+                // Questo evita N query al database (una per ogni file trovato)
+                Log.Information("Loading all sessions from database into cache...");
+                var allDbSessions = await _dbService.GetAllSessionsAsync();
+                var sessionCache = allDbSessions.ToDictionary(s => s.SessionId, s => s);
+                Log.Information("Loaded {Count} sessions from database into cache", sessionCache.Count);
+
                 foreach (var projectDir in projectDirs)
                 {
                     // Estrai working directory dal nome della cartella
@@ -205,8 +212,8 @@ namespace ClaudeCodeMAUI.Services
                             var fileInfo = new FileInfo(jsonlFile);
                             var lastModified = fileInfo.LastWriteTime;
 
-                            // Ottieni stato dal database (se esiste)
-                            var dbSession = await _dbService.GetSessionByIdAsync(sessionId);
+                            // Lookup stato dal cache in-memory (invece di query al database)
+                            sessionCache.TryGetValue(sessionId, out var dbSession);
 
                             if (dbSession == null)
                             {

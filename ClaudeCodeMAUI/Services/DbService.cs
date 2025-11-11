@@ -644,6 +644,31 @@ namespace ClaudeCodeMAUI.Services
         }
 
         /// <summary>
+        /// Ottiene TUTTE le sessioni dal database usando Entity Framework Core.
+        /// Usato per cache in-memory durante la sincronizzazione filesystem.
+        /// </summary>
+        /// <returns>Lista di tutte le entity Session</returns>
+        public async Task<List<Session>> GetAllSessionsAsync()
+        {
+            try
+            {
+                using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
+                var sessions = await dbContext.Sessions
+                    .AsNoTracking()
+                    .ToListAsync();
+
+                Log.Debug("Retrieved {Count} total sessions from database for caching", sessions.Count);
+                return sessions;
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to get all sessions");
+                return new List<Session>();
+            }
+        }
+
+        /// <summary>
         /// Ottiene tutte le sessioni aperte (status = 'open') usando Entity Framework Core
         /// </summary>
         /// <returns>Lista di entity Session con status 'open', ordinate per ultima attività decrescente</returns>
