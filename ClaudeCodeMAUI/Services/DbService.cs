@@ -884,6 +884,70 @@ namespace ClaudeCodeMAUI.Services
         }
 
         /// <summary>
+        /// Inserisce una nuova sessione o aggiorna lastActivity se esiste già.
+        /// Usato quando si estrae SessionId da messaggi stdout.
+        /// </summary>
+        /// <param name="sessionId">UUID della sessione</param>
+        /// <param name="name">Nome della sessione (opzionale)</param>
+        /// <param name="workingDirectory">Working directory</param>
+        /// <param name="lastActivity">Timestamp ultima attività</param>
+        /// <returns>True se nuova sessione inserita, False se già esistente</returns>
+        public async Task<bool> InsertOrUpdateSessionAsync(
+            string sessionId,
+            string? name,
+            string workingDirectory,
+            DateTime lastActivity)
+        {
+            try
+            {
+                using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
+                var existingSession = await dbContext.Sessions
+                    .FirstOrDefaultAsync(s => s.SessionId == sessionId);
+
+                if (existingSession != null)
+                {
+                    // Aggiorna lastActivity se esiste
+                    existingSession.LastActivity = lastActivity;
+
+                    // Aggiorna nome se vuoto e viene fornito
+                    if (string.IsNullOrWhiteSpace(existingSession.Name) && !string.IsNullOrWhiteSpace(name))
+                    {
+                        existingSession.Name = name;
+                    }
+
+                    await dbContext.SaveChangesAsync();
+                    Log.Debug("Updated lastActivity for session: {SessionId}", sessionId);
+                    return false; // Esisteva già
+                }
+                else
+                {
+                    // Inserisci nuova sessione
+                    var session = new Session
+                    {
+                        SessionId = sessionId,
+                        Name = string.IsNullOrWhiteSpace(name) ? null : name,
+                        WorkingDirectory = workingDirectory,
+                        Status = "open",
+                        LastActivity = lastActivity,
+                        CreatedAt = DateTime.Now,
+                        Processed = false,
+                        Excluded = false
+                    };
+                    dbContext.Sessions.Add(session);
+                    await dbContext.SaveChangesAsync();
+                    Log.Information("Inserted new session: {SessionId}", sessionId);
+                    return true; // Nuova sessione
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to insert or update session: {SessionId}", sessionId);
+                throw;
+            }
+        }
+
+        /// <summary>
         /// Aggiorna il nome di una sessione
         /// </summary>
         public async Task UpdateSessionNameAsync(string sessionId, string name)
