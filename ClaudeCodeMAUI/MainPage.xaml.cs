@@ -300,17 +300,18 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
             _currentTab = tabItem;
             CurrentTabContent.Content = tabContent;
 
-            // Carica gli ultimi 50 messaggi se stiamo riprendendo una sessione esistente
+            // Inizializza WebView (sempre necessario per permettere JavaScript)
+            var renderer = new Utilities.MarkdownHtmlRenderer();
+
+            // Carica messaggi storici se stiamo riprendendo una sessione esistente
             if (resumeExisting && _dbService != null)
             {
                 var messages = await _dbService.GetLastMessagesAsync(session.SessionId, count: 50);
                 Log.Information("Loaded {Count} historical messages for session {SessionId}",
                     messages.Count, session.SessionId);
 
-                // Renderizza i messaggi storici in HTML
                 if (messages.Count > 0)
                 {
-                    var renderer = new Utilities.MarkdownHtmlRenderer();
                     var conversationHtml = new System.Text.StringBuilder();
 
                     foreach (var message in messages)
@@ -325,14 +326,24 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
                         }
                     }
 
-                    // Genera la pagina HTML completa con i messaggi
                     var fullHtmlPage = renderer.GenerateFullPage(_isDarkTheme, conversationHtml.ToString());
-
-                    // Inizializza la WebView con i messaggi storici
                     tabContent.InitializeWebView(fullHtmlPage);
-
                     Log.Information("Initialized WebView with {Count} historical messages", messages.Count);
                 }
+                else
+                {
+                    // Sessione esistente ma senza messaggi storici
+                    var emptyPage = renderer.GenerateFullPage(_isDarkTheme, "");
+                    tabContent.InitializeWebView(emptyPage);
+                    Log.Information("Initialized WebView with empty page (no historical messages)");
+                }
+            }
+            else
+            {
+                // Nuova sessione: inizializza WebView con pagina vuota
+                var emptyPage = renderer.GenerateFullPage(_isDarkTheme, "");
+                tabContent.InitializeWebView(emptyPage);
+                Log.Information("Initialized WebView with empty page (new session)");
             }
 
             // NON avviare il processo qui - sarà avviato lazy al primo messaggio (lazy initialization)
@@ -354,131 +365,6 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
         }
     }
 
-    /// <summary>
-    /// Apre una sessione in un nuovo tab (da SessionInfo - legacy).
-    /// </summary>
-    /// <param name="sessionInfo">Informazioni della sessione da aprire</param>
-    /// <param name="resumeExisting">True se è una sessione esistente da riprendere con --resume</param>
-    private async Task OpenSessionInNewTabAsync(SessionInfo sessionInfo, bool resumeExisting)
-    {
-        try
-        {
-            Log.Information("Opening session in new tab: {SessionId}, Resume: {Resume}",
-                sessionInfo.SessionId, resumeExisting);
-
-            // Crea un nuovo SessionTabItem
-            var tabItem = new SessionTabItem
-            {
-                SessionId = sessionInfo.SessionId,
-                Name = sessionInfo.Name,
-                WorkingDirectory = sessionInfo.WorkingDirectory
-            };
-
-            // Crea ProcessManager per questa sessione
-            var processManager = new ClaudeProcessManager(
-                resumeSessionId: resumeExisting ? sessionInfo.SessionId : null,
-                dbSessionId: sessionInfo.SessionId,
-                workingDirectory: sessionInfo.WorkingDirectory
-            );
-
-            // Sottoscrivi eventi ProcessManager
-            processManager.JsonLineReceived += (s, e) => OnJsonLineReceived(tabItem, e.JsonLine);
-            processManager.ProcessCompleted += (s, e) => OnProcessCompleted(tabItem, e);
-            processManager.ErrorReceived += (s, e) => OnErrorReceived(tabItem, e);
-            processManager.IsRunningChanged += (s, isRunning) => OnIsRunningChanged(tabItem, isRunning);
-
-            tabItem.ProcessManager = processManager;
-
-            // Crea il contenuto del tab
-            var tabContent = new SessionTabContent();
-            tabContent.SetSessionTabItem(tabItem);
-
-            // Salva il riferimento al TabContent nel SessionTabItem
-            tabItem.TabContent = tabContent;
-
-            // Aggiungi alla collezione
-            _sessionTabs.Add(tabItem);
-
-            // Crea l'header del tab con Grid (Label + Label X cliccabile)
-            var tabHeader = new Grid
-            {
-                ColumnDefinitions = new ColumnDefinitionCollection
-                {
-                    new ColumnDefinition { Width = GridLength.Star },
-                    new ColumnDefinition { Width = new GridLength(30, GridUnitType.Absolute) }
-                },
-                BackgroundColor = Colors.DarkGray,
-                Padding = new Thickness(10, 8),
-                Margin = new Thickness(2, 0)
-            };
-
-            var titleLabel = new Label
-            {
-                Text = $"{tabItem.StatusIcon} {tabItem.TabTitle}",
-                TextColor = Colors.White,
-                VerticalOptions = LayoutOptions.Center,
-                VerticalTextAlignment = TextAlignment.Center,
-                Padding = new Thickness(5, 0)
-            };
-
-            var closeLabel = new Label
-            {
-                Text = "✖",
-                FontSize = 16,
-                TextColor = Colors.White,
-                VerticalOptions = LayoutOptions.Center,
-                HorizontalOptions = LayoutOptions.Center,
-                VerticalTextAlignment = TextAlignment.Center,
-                HorizontalTextAlignment = TextAlignment.Center,
-                Padding = 0
-            };
-
-            int tabIndex = _sessionTabs.Count - 1;
-            titleLabel.GestureRecognizers.Add(new TapGestureRecognizer
-            {
-                Command = new Command(() => SwitchToTab(tabIndex))
-            });
-            closeLabel.GestureRecognizers.Add(new TapGestureRecognizer
-            {
-                Command = new Command(async () => await OnCloseTabButtonClicked(tabItem))
-            });
-
-            tabHeader.Children.Add(titleLabel);
-            Grid.SetColumn(titleLabel, 0);
-            tabHeader.Children.Add(closeLabel);
-            Grid.SetColumn(closeLabel, 1);
-
-            TabHeadersContainer.Children.Add(tabHeader);
-
-            // Mostra il container e nascondi il placeholder
-            SessionTabContainer.IsVisible = true;
-            NoSessionsPlaceholder.IsVisible = false;
-
-            // Seleziona il nuovo tab
-            _currentTab = tabItem;
-            CurrentTabContent.Content = tabContent;
-
-            // Avvia il processo Claude
-            processManager.Start();
-
-            // Aggiorna o inserisci nel database
-            if (!resumeExisting && _dbService != null)
-            {
-                await _dbService.InsertSessionAsync(
-                    sessionInfo.SessionId,
-                    sessionInfo.Name,
-                    sessionInfo.WorkingDirectory
-                );
-            }
-
-            Log.Information("Session tab created and process started successfully");
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "Failed to open session in new tab");
-            await this.DisplaySelectableAlert("Error", $"Failed to open session:\n{ex.Message}", "OK");
-        }
-    }
 
     /// <summary>
     /// Handler per il pulsante "X" negli header dei tab.
