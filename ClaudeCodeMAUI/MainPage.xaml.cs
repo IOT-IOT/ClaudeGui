@@ -962,6 +962,8 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
     {
         try
         {
+            await ProcessMessageLineFromFileAsync(tabItem, jsonLine);
+            return;
             // IGNORA il contenuto di stdout - usa solo come trigger
             var filePath = GetSessionFilePath(tabItem.SessionId, tabItem.WorkingDirectory);
 
@@ -999,65 +1001,129 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
 
             var timestamp = ExtractTimestamp(root);
 
-            // Skip duplicati basati su timestamp
-            if (_lastProcessedTimestamp.HasValue && timestamp <= _lastProcessedTimestamp)
-                return;
-
-            _lastProcessedTimestamp = timestamp;
+            //// Skip duplicati basati su timestamp
+            //if (_lastProcessedTimestamp.HasValue && timestamp <= _lastProcessedTimestamp)
+            //    return;
+            //_lastProcessedTimestamp = timestamp;
 
             // Rileva campi sconosciuti - MOSTRA DIALOG per decidere
-            if (_dbService != null)
-            {
-                //var unknownFields = _dbService.DetectUnknownFields(root, _dbService.GetKnownJsonFields());
-                List<String>? unknownFields = []; //Disabilitato permanentemente
-                if (unknownFields.Count > 0)
-                {
-                    var uuid = ExtractUuid(root);
-                    Log.Warning("Unknown fields detected in live message {Uuid}: {Fields}",
-                        uuid, string.Join(", ", unknownFields));
+            //if (_dbService != null)
+            //{
+            //    //var unknownFields = _dbService.DetectUnknownFields(root, _dbService.GetKnownJsonFields());
+            //    List<String>? unknownFields = []; //Disabilitato permanentemente
+            //    if (unknownFields.Count > 0)
+            //    {
+            //        var uuid = ExtractUuid(root);
+            //        Log.Warning("Unknown fields detected in live message {Uuid}: {Fields}",
+            //            uuid, string.Join(", ", unknownFields));
 
-                    // Mostra UnknownFieldsDialog completo con syntax highlighting
-                    bool shouldContinue = await MainThread.InvokeOnMainThreadAsync(async () =>
-                    {
-                        var dialog = new Views.UnknownFieldsDialog(jsonLine, unknownFields, uuid);
-                        await Navigation.PushModalAsync(new NavigationPage(dialog));
+            //        // Mostra UnknownFieldsDialog completo con syntax highlighting
+            //        bool shouldContinue = await MainThread.InvokeOnMainThreadAsync(async () =>
+            //        {
+            //            var dialog = new Views.UnknownFieldsDialog(jsonLine, unknownFields, uuid);
+            //            await Navigation.PushModalAsync(new NavigationPage(dialog));
 
-                        // Aspetta che l'utente prenda una decisione (TaskCompletionSource)
-                        var result = await dialog.Result;
+            //            // Aspetta che l'utente prenda una decisione (TaskCompletionSource)
+            //            var result = await dialog.Result;
 
-                        // Chiudi il dialog DOPO aver ricevuto il risultato
-                        await Navigation.PopModalAsync();
+            //            // Chiudi il dialog DOPO aver ricevuto il risultato
+            //            await Navigation.PopModalAsync();
 
-                        return result;
-                    });
+            //            return result;
+            //        });
 
-                    if (!shouldContinue)
-                    {
-                        Log.Information("Live message processing interrupted by user at message {Uuid}", uuid);
-                        // Ferma il FileWatcher o gestisci l'interruzione
-                        return;
-                    }
+            //        if (!shouldContinue)
+            //        {
+            //            Log.Information("Live message processing interrupted by user at message {Uuid}", uuid);
+            //            // Ferma il FileWatcher o gestisci l'interruzione
+            //            return;
+            //        }
 
-                    // Se l'utente ha scelto "Continua", skip questo messaggio ma continua
-                    return;
-                }
-            }
+            //        // Se l'utente ha scelto "Continua", skip questo messaggio ma continua
+            //        return;
+            //    }
+            //}
 
             // Estrai type per decidere se aggiornare WebView
             var type = root.GetProperty("type").GetString();
             //Log.Debug("[{SessionId}] Received: {Type}", tabItem.SessionId.Substring(0, 8), type);
 
-
-            // PRIMA: Aggiorna WebView immediatamente (dal JSON già in memoria - nessun round-trip DB)
-            if (type == "user" || type == "assistant")
+            var content = ExtractBasicContent(root);
+            switch (type)
             {
-                // Se è una risposta assistant, rimuovi il messaggio "In attesa di risposta..."
-                if (type == "assistant")
-                {
+                case "user":
+                    break;
+                case "assistant":
                     await RemoveWaitingMessageFromWebViewAsync(tabItem);
-                }
+                    break;
+                case "system":
+                    // Messaggio di init da Claude - contiene session_id, model, version
+
+                    // ========== ESTRAI SESSION_ID ==========
+                    if (string.IsNullOrEmpty(tabItem.SessionId))
+                    {
+                        if (root.TryGetProperty("session_id", out var sessionIdProp))
+                        {
+                            var sessionId = sessionIdProp.GetString();
+
+                            if (!string.IsNullOrWhiteSpace(sessionId))
+                            {
+                                Log.Information("✅ Extracted SessionId from system message: {SessionId}", sessionId);
+
+                                // Aggiorna tabItem in memoria
+                                tabItem.SessionId = sessionId;
+
+                                // Inserisci la nuova sessione nel database con il SessionId estratto
+                                if (_dbService != null)
+                                {
+                                    await _dbService.InsertSessionAsync(
+                                        sessionId: sessionId,
+                                        name: tabItem.Name,
+                                        workingDirectory: tabItem.WorkingDirectory,
+                                        lastActivity: DateTime.Now
+                                    );
+                                }
+
+                                Log.Information("SessionId updated in memory and database");
+                            }
+                        }
+                    }
+
+                    // ========== ESTRAI MODEL E VERSION ==========
+                    if (root.TryGetProperty("model", out var modelProp))
+                    {
+                        var model = modelProp.GetString();
+                        if (!string.IsNullOrWhiteSpace(model))
+                        {
+                            tabItem.Model = model;
+                            Log.Information("Model extracted: {Model}", model);
+                        }
+                    }
+
+                    if (root.TryGetProperty("claude_code_version", out var versionProp))
+                    {
+                        var version = versionProp.GetString();
+                        if (!string.IsNullOrWhiteSpace(version))
+                        {
+                            tabItem.ClaudeVersion = version;
+                            Log.Information("Claude version extracted: {Version}", version);
+                        }
+                    }
+
+                    // Aggiorna il tab header se model/version sono stati estratti
+                    if (!string.IsNullOrWhiteSpace(tabItem.Model) || !string.IsNullOrWhiteSpace(tabItem.ClaudeVersion))
+                    {
+                        tabItem.RefreshTabTitle();
+                        Log.Information("Tab header updated with model/version info");
+                    }
+
+                    break;
+                default:
+                    break;
             }
-                var content = ExtractBasicContent(root);
+
+
+                
                 if (!string.IsNullOrWhiteSpace(content))
                 {
                     await AppendMessageToWebViewAsync(tabItem, type, content);
@@ -1108,27 +1174,27 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
             string htmlFragment;
 
             // Genera HTML in base al ruolo
-            if (role == "user")
+            switch (role)
             {
-                htmlFragment = renderer.RenderUserMessage(content);
-            }
-            else if (role == "assistant")
-            {
-                htmlFragment = renderer.RenderAssistantMessage(content);
-            }
-            else
-            {
-                // Skip altri tipi di messaggi (tool_use, tool_result, result, ecc.)
-                Log.Debug("Skipping message type: {Role}", role);
-                return;
+                case "user":
+                    htmlFragment = renderer.RenderUserMessage(content);
+                    break;
+                case "assistant":
+                    htmlFragment = renderer.RenderAssistantMessage(content);
+                    break;
+                default:
+                    // Skip altri tipi di messaggi (tool_use, tool_result, result, ecc.)
+                    //Log.Debug("Skipping message type: {Role}", role);
+                    //htmlFragment = renderer.RenderUserMessage("INIT");
+                    return;
             }
 
             // Codifica HTML in Base64 (UTF-8)
             var htmlBytes = System.Text.Encoding.UTF8.GetBytes(htmlFragment);
             var base64Html = Convert.ToBase64String(htmlBytes);
 
-            Log.Information("Appending {Role} message to WebView: {Length} chars -> {Base64Length} Base64 chars",
-                role, htmlFragment.Length, base64Html.Length);
+            //Log.Information("Appending {Role} message to WebView: {Length} chars -> {Base64Length} Base64 chars",
+            //    role, htmlFragment.Length, base64Html.Length);
 
             // Chiama la funzione JavaScript appendHtmlBase64() che:
             // - Decodifica Base64 -> HTML string
@@ -1141,7 +1207,7 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
             await MainThread.InvokeOnMainThreadAsync(async () =>
             {
                 var result = await tabItem.TabContent.WebView.EvaluateJavaScriptAsync(script);
-                Log.Debug("JavaScript result: {Result}", result ?? "null");
+                //Log.Debug("JavaScript result: {Result}", result ?? "null");
             });
         }
         catch (Exception ex)
@@ -1491,7 +1557,7 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
             }
         });
 
-        Log.Debug("[{SessionId}] IsRunning changed to: {IsRunning}", tabItem.SessionId, isRunning);
+        //Log.Debug("[{SessionId}] IsRunning changed to: {IsRunning}", tabItem.SessionId, isRunning);
     }
 
     /// <summary>

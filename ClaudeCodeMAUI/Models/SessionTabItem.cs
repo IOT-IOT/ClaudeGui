@@ -32,6 +32,18 @@ namespace ClaudeCodeMAUI.Models
         /// </summary>
         public string WorkingDirectory { get; set; } = string.Empty;
 
+        /// <summary>
+        /// Modello Claude utilizzato per questa sessione (es: "claude-sonnet-4-5-20250929")
+        /// Estratto dal messaggio "system" di inizializzazione
+        /// </summary>
+        public string? Model { get; set; }
+
+        /// <summary>
+        /// Versione di Claude Code utilizzata (es: "2.0.37")
+        /// Estratto dal messaggio "system" di inizializzazione
+        /// </summary>
+        public string? ClaudeVersion { get; set; }
+
 
         // ===== Runtime State =====
 
@@ -89,13 +101,33 @@ namespace ClaudeCodeMAUI.Models
         {
             get
             {
+                string baseName;
+
                 if (!string.IsNullOrWhiteSpace(Name))
-                    return Name;
+                    baseName = Name;
+                else if (SessionId.Length >= 8)
+                    baseName = $"Session {SessionId.Substring(0, 8)}...";
+                else
+                    baseName = "New Session";
 
-                if (SessionId.Length >= 8)
-                    return $"Session {SessionId.Substring(0, 8)}...";
+                // Aggiungi model e version se disponibili
+                string modelInfo = "";
 
-                return "New Session";
+                if (!string.IsNullOrWhiteSpace(Model))
+                {
+                    // Estrai solo il nome corto del modello (es: "sonnet-4-5" da "claude-sonnet-4-5-20250929")
+                    var modelShort = Model.Replace("claude-", "").Split('-')[0]; // es: "sonnet"
+                    modelInfo = $" ({modelShort}";
+
+                    if (!string.IsNullOrWhiteSpace(ClaudeVersion))
+                    {
+                        modelInfo += $" v{ClaudeVersion}";
+                    }
+
+                    modelInfo += ")";
+                }
+
+                return baseName + modelInfo;
             }
         }
 

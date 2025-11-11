@@ -135,9 +135,10 @@ namespace ClaudeCodeMAUI.Services
             args.Append("--verbose ");
             args.Append("--dangerously-skip-permissions ");
             args.Append("--replay-user-messages ");
+            //args.Append("--debug ");
             //args.Append("--include-partial-messages ");
 
-             
+
 
             //args.Append("--context-mode auto-compact "); // Gestione automatica del contesto con compattazione
 
@@ -204,9 +205,12 @@ namespace ClaudeCodeMAUI.Services
                     var line = await _process.StandardOutput.ReadLineAsync();
                     if (!string.IsNullOrWhiteSpace(line))
                     {
+                        Debug.WriteLine("");
+                        Debug.WriteLine(line);
                         JsonLineReceived?.Invoke(this, new JsonLineReceivedEventArgs { JsonLine = line });
                         if (line.StartsWith("{\"type\":\"result\","))
                         {
+                            
                             PlayBeep();
                             ResponseCompleted?.Invoke(this, EventArgs.Empty);
                         }
