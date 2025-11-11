@@ -622,6 +622,17 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
 
             Log.Information("Session selector returned with selection: {HasSelection}", selected != null);
 
+            // Chiudi SessionSelectorPage (sia per sessioni nuove che esistenti)
+            try
+            {
+                await Navigation.PopModalAsync();
+                Log.Information("SessionSelectorPage closed by MainPage");
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Failed to close SessionSelectorPage modal");
+            }
+
             // Se è stata selezionata una sessione, aprila
             if (selected != null)
             {
@@ -644,11 +655,12 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
                     // L'estrazione avviene in OnJsonLineReceived quando arriva il primo messaggio
                 }
 
-                Log.Information("Opening selected session: {SessionId}, Resume: {Resume}", selected.SessionId, !isNewSession);
+                Log.Information("Opening selected session: SessionId={SessionId}, Resume={Resume}",
+                    selected.SessionId ?? "(empty - will be populated by Claude)", !isNewSession);
+
                 await OpenSessionInNewTabAsync(selected, resumeExisting: !isNewSession);
 
-                // NON chiudere qui - SessionSelectorPage si chiude da solo dopo TrySetResult
-                Log.Information("Session opened, SessionSelectorPage should have closed itself");
+                Log.Information("Session opened successfully");
             }
             else
             {
