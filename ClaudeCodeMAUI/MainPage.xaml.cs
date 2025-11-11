@@ -962,25 +962,69 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
     {
         try
         {
-            await ProcessMessageLineFromFileAsync(tabItem, jsonLine);
-            return;
-            // IGNORA il contenuto di stdout - usa solo come trigger
-            var filePath = GetSessionFilePath(tabItem.SessionId, tabItem.WorkingDirectory);
-
-            if (!File.Exists(filePath))
+            // ========== STEP 1: Estrai SessionId se necessario ==========
+            if (string.IsNullOrEmpty(tabItem.SessionId))
             {
-                Log.Warning("Session file not found: {FilePath}", filePath);
+                try
+                {
+                    Log.Information("SessionId is empty, attempting to extract from stdout message");
+
+                    var json = JsonDocument.Parse(jsonLine);
+
+                    // Claude include il campo "session_id" nei messaggi JSON
+                    if (json.RootElement.TryGetProperty("session_id", out var sessionIdProp))
+                    {
+                        var sessionId = sessionIdProp.GetString();
+
+                        if (!string.IsNullOrWhiteSpace(sessionId))
+                        {
+                            Log.Information("✅ Extracted SessionId from Claude stdout: {SessionId}", sessionId);
+
+                            // Aggiorna SessionId in memoria
+                            tabItem.SessionId = sessionId;
+
+                            // Inserisci/aggiorna nel database
+                            if (_dbService != null)
+                            {
+                                await _dbService.InsertOrUpdateSessionAsync(
+                                    sessionId: sessionId,
+                                    name: tabItem.Name,
+                                    workingDirectory: tabItem.WorkingDirectory,
+                                    lastActivity: DateTime.Now
+                                );
+                            }
+
+                            Log.Information("SessionId updated in memory and database");
+                        }
+                        else
+                        {
+                            Log.Warning("session_id property found but value is empty");
+                        }
+                    }
+                    else
+                    {
+                        Log.Debug("No session_id field in JSON message (might be metadata or other message type)");
+                    }
+                }
+                catch (JsonException ex)
+                {
+                    Log.Warning(ex, "Failed to parse jsonLine as JSON for SessionId extraction");
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "Failed to extract SessionId from stdout");
+                }
+            }
+
+            // ========== STEP 2: Verifica che abbiamo un SessionId valido ==========
+            if (string.IsNullOrEmpty(tabItem.SessionId))
+            {
+                Log.Warning("SessionId still empty after extraction attempt - message will not be processed");
                 return;
             }
 
-            // Leggi ultime righe dal file con retry (32KB buffer)
-            var lastLines = await _dbService?.ReadLastLinesFromFileAsync(filePath, maxLines: 20, bufferSizeKb: 32)
-                ?? new List<string>();
-
-            foreach (var line in lastLines)
-            {
-                await ProcessMessageLineFromFileAsync(tabItem, line);
-            }
+            // ========== STEP 3: Processa il messaggio ==========
+            await ProcessMessageLineFromFileAsync(tabItem, jsonLine);
         }
         catch (Exception ex)
         {
@@ -1057,37 +1101,8 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
                     await RemoveWaitingMessageFromWebViewAsync(tabItem);
                     break;
                 case "system":
-                    // Messaggio di init da Claude - contiene session_id, model, version
-
-                    // ========== ESTRAI SESSION_ID ==========
-                    if (string.IsNullOrEmpty(tabItem.SessionId))
-                    {
-                        if (root.TryGetProperty("session_id", out var sessionIdProp))
-                        {
-                            var sessionId = sessionIdProp.GetString();
-
-                            if (!string.IsNullOrWhiteSpace(sessionId))
-                            {
-                                Log.Information("✅ Extracted SessionId from system message: {SessionId}", sessionId);
-
-                                // Aggiorna tabItem in memoria
-                                tabItem.SessionId = sessionId;
-
-                                // Inserisci la nuova sessione nel database con il SessionId estratto
-                                if (_dbService != null)
-                                {
-                                    await _dbService.InsertSessionAsync(
-                                        sessionId: sessionId,
-                                        name: tabItem.Name,
-                                        workingDirectory: tabItem.WorkingDirectory,
-                                        lastActivity: DateTime.Now
-                                    );
-                                }
-
-                                Log.Information("SessionId updated in memory and database");
-                            }
-                        }
-                    }
+                    // Messaggio di init da Claude - contiene model e version
+                    // NOTA: SessionId viene estratto in OnJsonLineReceived, non qui
 
                     // ========== ESTRAI MODEL E VERSION ==========
                     if (root.TryGetProperty("model", out var modelProp))
