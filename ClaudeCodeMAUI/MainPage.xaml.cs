@@ -599,7 +599,8 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
 
                 if (createdSession != null)
                 {
-                    createdSession.SessionId = Guid.NewGuid().ToString();
+                    // SessionId verrà popolato da Claude quando invia il primo messaggio con session_id
+                    // L'estrazione avviene in OnJsonLineReceived
                     await OpenSessionInNewTabAsync(createdSession, resumeExisting: false);
                 }
 
@@ -639,8 +640,8 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
 
                 if (isNewSession)
                 {
-                    // Genera un nuovo SessionId (verrà popolato dal processo Claude quando si avvia)
-                    selected.SessionId = Guid.NewGuid().ToString();
+                    // SessionId rimarrà vuoto finché Claude non invia il primo messaggio con session_id
+                    // L'estrazione avviene in OnJsonLineReceived quando arriva il primo messaggio
                 }
 
                 Log.Information("Opening selected session: {SessionId}, Resume: {Resume}", selected.SessionId, !isNewSession);
