@@ -931,7 +931,7 @@ namespace ClaudeCodeMAUI.Services
                         Status = "open",
                         LastActivity = lastActivity,
                         CreatedAt = DateTime.Now,
-                        Processed = false,
+                        Processed = true,  // Sessioni create via UI sono già valide, non necessitano analisi
                         Excluded = false
                     };
                     dbContext.Sessions.Add(session);
