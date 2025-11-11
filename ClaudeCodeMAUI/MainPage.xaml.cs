@@ -855,7 +855,8 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
     /// <summary>
     /// Handler per linee JSON ricevute dallo stdout del processo Claude.
     /// STEP 1: Estrae il SessionId dal primo messaggio JSON (se non ancora popolato).
-    /// STEP 2: Usa stdout come trigger per leggere messaggi dal file .jsonl (source of truth).
+    /// STEP 2: Verifica che SessionId sia valido.
+    /// STEP 3: Processa il messaggio JSON (salva DB, aggiorna WebView).
     /// </summary>
     private async void OnJsonLineReceived(SessionTabItem tabItem, string jsonLine)
     {
