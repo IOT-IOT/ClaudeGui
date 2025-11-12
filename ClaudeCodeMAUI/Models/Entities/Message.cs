@@ -4,10 +4,10 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace ClaudeCodeMAUI.Models.Entities;
 
 /// <summary>
-/// Entity rappresentante la tabella 'messages' del database.
-/// Contiene i singoli messaggi di una conversazione.
+/// Entity rappresentante la tabella 'messages_from_stdout' del database.
+/// Contiene i messaggi ricevuti in tempo reale dallo stdout del processo Claude.
 /// </summary>
-[Table("messages")]
+[Table("messages_from_stdout")]
 public class Message
 {
     /// <summary>
@@ -46,13 +46,6 @@ public class Message
     public string Uuid { get; set; } = null!;
 
     /// <summary>
-    /// UUID del messaggio parent (per thread/sidechain)
-    /// </summary>
-    [StringLength(36)]
-    [Column("parent_uuid")]
-    public string? ParentUuid { get; set; }
-
-    /// <summary>
     /// Versione di Claude utilizzata
     /// </summary>
     [StringLength(20)]
@@ -60,38 +53,11 @@ public class Message
     public string? Version { get; set; }
 
     /// <summary>
-    /// Branch git attivo al momento del messaggio
-    /// </summary>
-    [StringLength(255)]
-    [Column("git_branch")]
-    public string? GitBranch { get; set; }
-
-    /// <summary>
-    /// Flag indicante se il messaggio è parte di una sidechain
-    /// </summary>
-    [Column("is_sidechain")]
-    public bool? IsSidechain { get; set; }
-
-    /// <summary>
-    /// Tipo di utente: 'human', 'agent', ecc.
-    /// </summary>
-    [StringLength(20)]
-    [Column("user_type")]
-    public string? UserType { get; set; }
-
-    /// <summary>
     /// Current Working Directory al momento del messaggio
     /// </summary>
     [StringLength(500)]
     [Column("cwd")]
     public string? Cwd { get; set; }
-
-    /// <summary>
-    /// ID della richiesta API
-    /// </summary>
-    [StringLength(50)]
-    [Column("request_id")]
-    public string? RequestId { get; set; }
 
     /// <summary>
     /// Modello Claude utilizzato (es. 'claude-3-opus-20240229')

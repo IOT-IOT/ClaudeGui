@@ -1047,7 +1047,7 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
             
 
             // POI: Salva nel DB per persistenza - TUTTI i tipi (no filtro)
-            await SaveMessageFromJson(tabItem.SessionId, root);
+            await SaveMessageFromJsonStdOut(tabItem.SessionId, root);
             //Log.Debug("[{SessionId}] Saved to DB: {Type}", tabItem.SessionId.Substring(0, 8), type);
         }
         catch (Exception ex)
@@ -1071,9 +1071,9 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
     /// Usa la funzione JavaScript appendHtmlBase64() per aggiungere il contenuto senza ricaricare la pagina.
     /// </summary>
     /// <param name="tabItem">Tab di destinazione</param>
-    /// <param name="role">Ruolo del messaggio: "user" o "assistant"</param>
+    /// <param name="type">Ruolo del messaggio: "user" o "assistant"</param>
     /// <param name="content">Contenuto del messaggio</param>
-    private async Task AppendMessageToWebViewAsync(SessionTabItem tabItem, string role, string content)
+    private async Task AppendMessageToWebViewAsync(SessionTabItem tabItem, string type, string content)
     {
         try
         {
@@ -1089,7 +1089,7 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
             string htmlFragment;
 
             // Genera HTML in base al ruolo
-            switch (role)
+            switch (type)
             {
                 case "user":
                     htmlFragment = renderer.RenderUserMessage(content);
@@ -1097,6 +1097,11 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
                 case "assistant":
                     htmlFragment = renderer.RenderAssistantMessage(content);
                     break;
+                case "system":
+                    return;
+                case "result":
+                    //todo: Qui dovremmo aggiornare le metriche
+                    return;
                 default:
                     // Skip altri tipi di messaggi (tool_use, tool_result, result, ecc.)
                     //Log.Debug("Skipping message type: {Role}", role);
@@ -1232,52 +1237,49 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
     /// Salva un messaggio dal JSON nel database con tutti i metadata.
     /// Supporta TUTTI i tipi di messaggio (user, assistant, tool_use, tool_result, summary, etc.)
     /// </summary>
-    private async Task SaveMessageFromJson(string sessionId, JsonElement root)
+    private async Task SaveMessageFromJsonStdOut(string sessionId, JsonElement root)
     {
         try
         {
             if (_dbService == null)
                 return;
+            string content = ExtractBasicContent(root);
+            if (content == "")
+            {
+                Debugger.Break();
+            }
 
             var type = root.GetProperty("type").GetString() ?? "unknown";
             var uuid = root.TryGetProperty("uuid", out var u) ? u.GetString() : null;
             var timestamp = ExtractTimestamp(root);
 
-            // Estrai metadata completi
-            string? parentUuid = root.TryGetProperty("parentUuid", out var pu) ? pu.GetString() : null;
+            // Estrai metadata
             string? version = root.TryGetProperty("version", out var v) ? v.GetString() : null;
-            string? gitBranch = root.TryGetProperty("gitBranch", out var gb) ? gb.GetString() : null;
-            bool? isSidechain = root.TryGetProperty("isSidechain", out var isc) ? isc.GetBoolean() : null;
-            string? userType = root.TryGetProperty("userType", out var ut) ? ut.GetString() : null;
+            if (version == null)
+            {
+                version = root.TryGetProperty("claude_code_version", out var ver) ? ver.GetString() : null;
+            }
             string? cwd = root.TryGetProperty("cwd", out var c) ? c.GetString() : null;
 
-            string? requestId = null;
-            string? model = null;
-            string? usageJson = null;
+            string? model = root.TryGetProperty("model", out var mod) ? mod.GetString() : null; 
+            string? usageJson = root.TryGetProperty("usage", out var use) ? use.GetString() : null;
+            // Estrai contenuto
 
-            // Per messaggi assistant, estrai requestId, model e usage
+
+            // Per messaggi assistant, estrai model e usage
             if (root.TryGetProperty("message", out var messageProp))
             {
-                if (messageProp.TryGetProperty("id", out var idProp))
-                    requestId = idProp.GetString();
-
-                if (messageProp.TryGetProperty("model", out var modelProp))
+                if (messageProp.TryGetProperty("model", out var modelProp) && model == null)
                     model = modelProp.GetString();
 
-                if (messageProp.TryGetProperty("usage", out var usageProp))
+                if (messageProp.TryGetProperty("usage", out var usageProp) && usageJson == null)
                 {
                     usageJson = usageProp.GetRawText();
                 }
             }
 
-            // Estrai contenuto
-            string content = ExtractBasicContent(root);
-            if (content =="")
-            {
-                Debugger.Break();
-            }
 
-            // Check se è un messaggio di tipo "summary" - gestione speciale
+            // Check se è un messaggio di tipo "summary" - gestione speciale . Questo era valido se si faceva il parse dal file jsonl. Non dovrebbe esistere in stdout
             if (type == "summary")
             {
                 try
@@ -1303,7 +1305,7 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
                 return;
             }
 
-            // Check se è un messaggio di tipo "file-history-snapshot" - gestione speciale
+            // Check se è un messaggio di tipo "file-history-snapshot" - gestione speciale . Questo era valido se si faceva il parse dal file jsonl. Non dovrebbe esistere in stdout
             if (type == "file-history-snapshot")
             {
                 try
@@ -1340,7 +1342,7 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
                 return;
             }
 
-            // Check se è un messaggio di tipo "queue-operation" - gestione speciale
+            // Check se è un messaggio di tipo "queue-operation" - gestione speciale . Questo era valido se si faceva il parse dal file jsonl. Non dovrebbe esistere in stdout
             if (type == "queue-operation")
             {
                 try
@@ -1369,23 +1371,22 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
                 return;
             }
 
-            // Salva con tutti i metadata in modalità standalone (auto-save con DbContext dedicato)
-            await _dbService.SaveMessageStandaloneAsync(
+            
+
+            
+
+        // Salva con tutti i metadata in modalità standalone (auto-save con DbContext dedicato)
+        await _dbService.SaveMessageStandaloneAsync(
                 sessionId,
-                type,
+                "",        // role (ignorato, usa messageType)
                 content,
                 timestamp,
                 uuid,
-                parentUuid,
                 version,
-                gitBranch,
-                isSidechain,
-                userType,
                 cwd,
-                requestId,
                 model,
                 usageJson,
-                type // messageType = type
+                type       // messageType
             );
         }
         catch (Exception ex)
@@ -1393,6 +1394,187 @@ public partial class MainPage : ContentPage, INotifyPropertyChanged
             Log.Error(ex, "Failed to save message from JSON");
         }
     }
+
+    /// <summary>
+    /// FUTURE IMPLEMENTATION: Salva un messaggio dal JSON nel database con tutti i metadata.
+    /// Questo metodo è destinato all'import batch da file .jsonl.
+    /// Salverà nella tabella 'messages_from_jsonl' (attualmente identica struttura a messages_from_stdout).
+    ///
+    /// DO NOT DELETE: Mantieni questo metodo per implementazione futura.
+    ///
+    /// Supporta TUTTI i tipi di messaggio (user, assistant, tool_use, tool_result, summary, etc.)
+    /// </summary>
+    private async Task SaveMessageFromJsonFile(string sessionId, JsonElement root)
+    {
+        try
+        {
+            if (_dbService == null)
+                return;
+            string content = ExtractBasicContent(root);
+            if (content == "")
+            {
+                Debugger.Break();
+            }
+
+            var type = root.GetProperty("type").GetString() ?? "unknown";
+            var uuid = root.TryGetProperty("uuid", out var u) ? u.GetString() : null;
+            var timestamp = ExtractTimestamp(root);
+
+            // Estrai metadata completi
+            string? parentUuid = root.TryGetProperty("parentUuid", out var pu) ? pu.GetString() : null;
+            string? version = root.TryGetProperty("version", out var v) ? v.GetString() : null; // todo: probabilmente obsoleto
+            if (version == null)
+            {
+                version = root.TryGetProperty("claude_code_version", out var ver) ? ver.GetString() : null;
+            }
+            string? gitBranch = root.TryGetProperty("gitBranch", out var gb) ? gb.GetString() : null;
+            bool? isSidechain = root.TryGetProperty("isSidechain", out var isc) ? isc.GetBoolean() : null;
+            string? userType = root.TryGetProperty("userType", out var ut) ? ut.GetString() : null;
+            string? cwd = root.TryGetProperty("cwd", out var c) ? c.GetString() : null;
+
+            string? requestId = null;
+            string? model = root.TryGetProperty("model", out var mod) ? mod.GetString() : null;
+            string? usageJson = root.TryGetProperty("usage", out var use) ? use.GetString() : null;
+            // Estrai contenuto
+
+
+            // Per messaggi assistant, estrai requestId, model e usage
+            if (root.TryGetProperty("message", out var messageProp))
+            {
+                if (messageProp.TryGetProperty("id", out var idProp))
+                    requestId = idProp.GetString();
+
+                if (messageProp.TryGetProperty("model", out var modelProp) && model == null)
+                    model = modelProp.GetString();
+
+                if (messageProp.TryGetProperty("usage", out var usageProp) && usageJson == null)
+                {
+                    usageJson = usageProp.GetRawText();
+                }
+            }
+
+
+            // Check se è un messaggio di tipo "summary" - gestione speciale . Questo era valido se si faceva il parse dal file jsonl. Non dovrebbe esistere in stdout
+            if (type == "summary")
+            {
+                try
+                {
+                    // Parse del content JSON per estrarre il campo "summary"
+                    var contentJson = JsonDocument.Parse(content);
+                    var summaryText = contentJson.RootElement.GetProperty("summary").GetString();
+                    var leafUuid = contentJson.RootElement.TryGetProperty("leafUuid", out var leafUuidProp)
+                        ? leafUuidProp.GetString()
+                        : null;
+
+                    // Salva nella tabella summaries (NON in messages)
+                    await _dbService.SaveSummaryStandaloneAsync(sessionId, timestamp, summaryText ?? "", leafUuid);
+
+                    Log.Debug("Saved summary for session {SessionId}: {Summary}", sessionId, summaryText);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "Failed to parse summary content: {Content}", content);
+                }
+
+                // Skip SaveMessageStandaloneAsync per i summary
+                return;
+            }
+
+            // Check se è un messaggio di tipo "file-history-snapshot" - gestione speciale . Questo era valido se si faceva il parse dal file jsonl. Non dovrebbe esistere in stdout
+            if (type == "file-history-snapshot")
+            {
+                try
+                {
+                    // Parse del content JSON per estrarre i campi necessari
+                    var contentJson = JsonDocument.Parse(content);
+                    var messageId = contentJson.RootElement.GetProperty("messageId").GetString() ?? "";
+                    var isSnapshotUpdate = contentJson.RootElement.TryGetProperty("isSnapshotUpdate", out var isuProp)
+                        && isuProp.GetBoolean();
+
+                    // Estrai snapshot.trackedFileBackups come JSON string
+                    string trackedFileBackupsJson = "{}";
+                    if (contentJson.RootElement.TryGetProperty("snapshot", out var snapshotProp))
+                    {
+                        if (snapshotProp.TryGetProperty("trackedFileBackups", out var tfbProp))
+                        {
+                            trackedFileBackupsJson = tfbProp.GetRawText();
+                        }
+                    }
+
+                    // Salva nella tabella file_history_snapshots (NON in messages)
+                    await _dbService.SaveFileHistorySnapshotStandaloneAsync(sessionId, timestamp, messageId,
+                        trackedFileBackupsJson, isSnapshotUpdate);
+
+                    Log.Debug("Saved file history snapshot for session {SessionId}: messageId={MessageId}",
+                        sessionId, messageId);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "Failed to parse file-history-snapshot content: {Content}", content);
+                }
+
+                // Skip SaveMessageStandaloneAsync per i file-history-snapshot
+                return;
+            }
+
+            // Check se è un messaggio di tipo "queue-operation" - gestione speciale . Questo era valido se si faceva il parse dal file jsonl. Non dovrebbe esistere in stdout
+            if (type == "queue-operation")
+            {
+                try
+                {
+                    // Parse del content JSON per estrarre i campi necessari
+                    var contentJson = JsonDocument.Parse(content);
+                    var operation = contentJson.RootElement.TryGetProperty("operation", out var opProp)
+                        ? opProp.GetString() ?? ""
+                        : "";
+                    var queueContent = contentJson.RootElement.TryGetProperty("content", out var contentProp)
+                        ? contentProp.GetString() ?? ""
+                        : "";
+
+                    // Salva nella tabella queue_operations (NON in messages)
+                    await _dbService.SaveQueueOperationStandaloneAsync(sessionId, timestamp, operation, queueContent);
+
+                    Log.Debug("Saved queue operation for session {SessionId}: operation={Operation}",
+                        sessionId, operation);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "Failed to parse queue-operation content: {Content}", content);
+                }
+
+                // Skip SaveMessageStandaloneAsync per i queue-operation
+                return;
+            }
+
+
+
+
+
+            // Salva con tutti i metadata in modalità standalone (auto-save con DbContext dedicato)
+            await _dbService.SaveMessageStandaloneAsync(
+                    sessionId,
+                    type, //rindondante
+                    content,
+                    timestamp,
+                    uuid,
+                    parentUuid, //obsoleto
+                    version,
+                    gitBranch, //obsoleto
+                    isSidechain, //obsoleto
+                    userType, //obsoleto
+                    cwd,
+                    requestId, //obsoleto
+                    model,
+                    usageJson,
+                    type
+                );
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to save message from JSON");
+        }
+    }
+
 
     /// <summary>
     /// Estrae il contenuto testuale base da un JsonElement.

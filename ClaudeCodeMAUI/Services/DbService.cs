@@ -217,9 +217,7 @@ namespace ClaudeCodeMAUI.Services
         /// <param name="version">Versione Claude</param>
         /// <param name="gitBranch">Branch Git</param>
         /// <param name="isSidechain">Flag sidechain</param>
-        /// <param name="userType">Tipo di utente</param>
         /// <param name="cwd">Current working directory</param>
-        /// <param name="requestId">Request ID</param>
         /// <param name="model">Modello Claude usato</param>
         /// <param name="usageJson">JSON con usage info</param>
         /// <param name="messageType">Tipo di messaggio</param>
@@ -229,13 +227,8 @@ namespace ClaudeCodeMAUI.Services
             string content,
             DateTime? timestamp = null,
             string? uuid = null,
-            string? parentUuid = null,
             string? version = null,
-            string? gitBranch = null,
-            bool? isSidechain = null,
-            string? userType = null,
             string? cwd = null,
-            string? requestId = null,
             string? model = null,
             string? usageJson = null,
             string? messageType = null)
@@ -260,13 +253,8 @@ namespace ClaudeCodeMAUI.Services
                     content,
                     timestamp,
                     uuid,
-                    parentUuid,
                     version,
-                    gitBranch,
-                    isSidechain,
-                    userType,
                     cwd,
-                    requestId,
                     model,
                     usageJson,
                     messageType);
@@ -280,6 +268,42 @@ namespace ClaudeCodeMAUI.Services
                     conversationId, uuid);
                 // Non fare throw - il salvataggio dei messaggi è opzionale e non deve bloccare l'app
             }
+        }
+
+        /// <summary>
+        /// LEGACY OVERLOAD: Wrapper per future implementation (messages_from_jsonl).
+        /// Accetta parametri obsoleti ma li ignora, delegando alla nuova signature.
+        /// </summary>
+        [Obsolete("Use SaveMessageStandaloneAsync with new signature (without obsolete parameters)")]
+        public async Task SaveMessageStandaloneAsync(
+            string conversationId,
+            string role,
+            string content,
+            DateTime? timestamp,
+            string? uuid,
+            string? parentUuid,        // IGNORED
+            string? version,
+            string? gitBranch,         // IGNORED
+            bool? isSidechain,         // IGNORED
+            string? userType,          // IGNORED
+            string? cwd,
+            string? requestId,         // IGNORED
+            string? model,
+            string? usageJson,
+            string? messageType)
+        {
+            // Delega alla firma pulita ignorando parametri obsoleti
+            await SaveMessageStandaloneAsync(
+                conversationId,
+                role,
+                content,
+                timestamp,
+                uuid,
+                version,
+                cwd,
+                model,
+                usageJson,
+                messageType);
         }
 
         /// <summary>
@@ -324,13 +348,8 @@ namespace ClaudeCodeMAUI.Services
             string content = "",
             DateTime? timestamp = null,
             string? uuid = null,
-            string? parentUuid = null,
             string? version = null,
-            string? gitBranch = null,
-            bool? isSidechain = null,
-            string? userType = null,
             string? cwd = null,
-            string? requestId = null,
             string? model = null,
             string? usageJson = null,
             string? messageType = null)
@@ -351,13 +370,8 @@ namespace ClaudeCodeMAUI.Services
                 Content = content,
                 Timestamp = timestamp ?? DateTime.UtcNow,
                 Uuid = uuid,
-                ParentUuid = parentUuid,
                 Version = version,
-                GitBranch = gitBranch,
-                IsSidechain = isSidechain,
-                UserType = userType,
                 Cwd = cwd,
-                RequestId = requestId,
                 Model = model,
                 UsageJson = usageJson
             };
@@ -370,6 +384,46 @@ namespace ClaudeCodeMAUI.Services
             {
                 existingUuids.Add(uuid);
             }
+        }
+
+        /// <summary>
+        /// LEGACY OVERLOAD: Wrapper per future implementation (messages_from_jsonl).
+        /// Accetta parametri obsoleti ma li ignora, delegando alla nuova signature.
+        /// </summary>
+        [Obsolete("Use SaveMessageAsync with new signature (without obsolete parameters)")]
+        public async Task SaveMessageAsync(
+            HashSet<string> existingUuids,
+            ClaudeGuiDbContext dbContext,
+            string conversationId,
+            string role,
+            string content,
+            DateTime? timestamp,
+            string? uuid,
+            string? parentUuid,        // IGNORED
+            string? version,
+            string? gitBranch,         // IGNORED
+            bool? isSidechain,         // IGNORED
+            string? userType,          // IGNORED
+            string? cwd,
+            string? requestId,         // IGNORED
+            string? model,
+            string? usageJson,
+            string? messageType)
+        {
+            // Delega alla firma pulita ignorando parametri obsoleti
+            await SaveMessageAsync(
+                existingUuids,
+                dbContext,
+                conversationId,
+                role,
+                content,
+                timestamp,
+                uuid,
+                version,
+                cwd,
+                model,
+                usageJson,
+                messageType);
         }
 
         /// <summary>
@@ -1140,7 +1194,10 @@ namespace ClaudeCodeMAUI.Services
         }
 
         /// <summary>
-        /// Importa messaggi da file .jsonl nel database.
+        /// FUTURE IMPLEMENTATION: Importa messaggi da file .jsonl nel database.
+        /// Questo metodo importerà nella tabella 'messages_from_jsonl'.
+        /// Attualmente usa la vecchia firma con parametri obsoleti (mantenuta per compatibilità futura).
+        ///
         /// Rileva campi sconosciuti e mostra dialog per decidere se continuare o interrompere.
         /// </summary>
         /// <param name="sessionId">ID della sessione</param>
