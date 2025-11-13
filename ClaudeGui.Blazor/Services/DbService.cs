@@ -968,6 +968,43 @@ namespace ClaudeGui.Blazor.Services
         }
 
         /// <summary>
+        /// Aggiorna lo status di una sessione esistente.
+        /// Usato per marcare una sessione come "closed" quando viene terminata.
+        /// </summary>
+        /// <param name="sessionId">UUID della sessione</param>
+        /// <param name="status">Nuovo status ('open' o 'closed')</param>
+        /// <returns>True se la sessione è stata aggiornata, False se non trovata</returns>
+        public async Task<bool> UpdateSessionStatusAsync(string sessionId, string status)
+        {
+            try
+            {
+                using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
+                var session = await dbContext.Sessions
+                    .FirstOrDefaultAsync(s => s.SessionId == sessionId);
+
+                if (session == null)
+                {
+                    Log.Warning("Cannot update status for session {SessionId}: not found in DB", sessionId);
+                    return false;
+                }
+
+                session.Status = status;
+                session.LastActivity = DateTime.Now;
+
+                await dbContext.SaveChangesAsync();
+
+                Log.Information("Updated session {SessionId} status to '{Status}'", sessionId, status);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to update session status: {SessionId}", sessionId);
+                throw;
+            }
+        }
+
+        /// <summary>
         /// Inserisce una nuova sessione o aggiorna lastActivity se esiste già.
         /// Usato quando si estrae SessionId da messaggi stdout.
         /// </summary>
@@ -1056,35 +1093,6 @@ namespace ClaudeGui.Blazor.Services
             catch (Exception ex)
             {
                 Log.Error(ex, "Failed to update session name: {SessionId}", sessionId);
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Aggiorna lo status di una sessione
-        /// </summary>
-        public async Task UpdateSessionStatusAsync(string sessionId, string status)
-        {
-            try
-            {
-                using var dbContext = await _dbContextFactory.CreateDbContextAsync();
-
-                var session = await dbContext.Sessions.FirstOrDefaultAsync(s => s.SessionId == sessionId);
-                if (session != null)
-                {
-                    session.Status = status;
-                    await dbContext.SaveChangesAsync();
-
-                    Log.Information("Updated session status: {SessionId} → {Status}", sessionId, status);
-                }
-                else
-                {
-                    Log.Warning("Session not found for status update: {SessionId}", sessionId);
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "Failed to update session status: {SessionId}", sessionId);
                 throw;
             }
         }

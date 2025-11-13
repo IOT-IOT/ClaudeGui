@@ -41,6 +41,7 @@ if (connectionString != null)
 
 // Services (singleton per condivisione state tra SignalR connections)
 builder.Services.AddSingleton<ITerminalManager, TerminalManager>();
+builder.Services.AddSingleton<SessionEventService>();
 
 // DbService requires credentials from configuration
 var dbUsername = builder.Configuration["ClaudeSettings:DbUsername"] ?? "root";

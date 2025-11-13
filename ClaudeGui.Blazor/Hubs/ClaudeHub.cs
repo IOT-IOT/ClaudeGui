@@ -25,14 +25,19 @@ public class ClaudeHub : Hub
     /// <param name="workingDirectory">Working directory per Claude</param>
     /// <param name="existingSessionId">SessionId esistente per resume (opzionale)</param>
     /// <param name="sessionName">Nome della sessione (opzionale, per nuove sessioni)</param>
-    /// <returns>Session ID reale di Claude (dopo parsing o da resume)</returns>
-    public async Task<string> CreateSession(string workingDirectory, string? existingSessionId = null, string? sessionName = null)
+    /// <param name="customConnectionId">ID univoco generato lato client per identificare questo terminal (opzionale)</param>
+    /// <returns>Connection ID univoco per questo terminal</returns>
+    public async Task<string> CreateSession(string workingDirectory, string? existingSessionId = null, string? sessionName = null, string? customConnectionId = null)
     {
-        _logger.Information("Client {ConnectionId} creating session, Name: {Name}, WorkingDir: {WorkingDir}, ExistingSessionId: {ExistingSessionId}",
-            Context.ConnectionId, sessionName ?? "unnamed", workingDirectory, existingSessionId);
+        // Usa customConnectionId se fornito, altrimenti fallback a Context.ConnectionId
+        // ⚠️ IMPORTANTE: Context.ConnectionId è lo stesso per tutti i component in Blazor Server!
+        // Per multi-terminal support, DEVI passare customConnectionId univoco da JavaScript.
+        var connectionId = customConnectionId ?? Context.ConnectionId;
 
-        // Usa ConnectionId per routing SignalR durante creazione
-        var connectionId = Context.ConnectionId;
+        _logger.Information("Client {HubConnectionId} creating session with CustomId: {ConnectionId}, Name: {Name}, WorkingDir: {WorkingDir}, ExistingSessionId: {ExistingSessionId}",
+            Context.ConnectionId, connectionId, sessionName ?? "unnamed", workingDirectory, existingSessionId);
+
+        // Aggiungi a SignalR group per routing messaggi
         await Groups.AddToGroupAsync(Context.ConnectionId, connectionId);
 
         // Crea sessione - ASPETTA il Session ID reale di Claude
@@ -42,19 +47,17 @@ public class ClaudeHub : Hub
         _logger.Information("✅ Session {SessionId} created successfully (Name: {Name}, ConnectionId: {ConnectionId})",
             realSessionId, sessionName ?? "unnamed", connectionId);
 
-        // Ritorna il Session ID reale di Claude
-        return realSessionId;
+        // Ritorna il Connection ID univoco per questo terminal
+        return connectionId;
     }
 
     /// <summary>
     /// Client invia input al terminal (es. comando, Ctrl+C, ecc.).
-    /// Usa ConnectionId automaticamente per trovare la sessione.
     /// </summary>
+    /// <param name="connectionId">Connection ID univoco del terminal (generato lato client)</param>
     /// <param name="input">Input text/data</param>
-    public async Task SendInput(string input)
+    public async Task SendInput(string connectionId, string input)
     {
-        var connectionId = Context.ConnectionId;
-
         // ⚡ Usa Trace.WriteLine con Flush per output immediato (non bufferizzato)
         //System.Diagnostics.Trace.WriteLine($"⚡ [ClaudeHub] RICEVUTO da SignalR: '{input}' (ConnectionId: {connectionId})");
         //System.Diagnostics.Trace.Flush();

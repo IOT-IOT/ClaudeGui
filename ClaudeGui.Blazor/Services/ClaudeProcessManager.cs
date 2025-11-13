@@ -36,6 +36,7 @@ namespace ClaudeGui.Blazor.Services
         private bool _wasKilled;
         private string? _sessionId; // Può essere passato al costruttore (resume) o rilevato da /status (nuova sessione)
         private readonly string _workingDirectory; // Working directory per il processo Claude
+        private readonly bool _isNewSession; // Flag per determinare se inviare /status o no (false per resume)
 
         // Terminal dimensions (matching typical xterm.js defaults)
         private const int TERMINAL_ROWS = 24;
@@ -64,14 +65,16 @@ namespace ClaudeGui.Blazor.Services
         /// </summary>
         /// <param name="resumeSessionId">Optional session ID to resume</param>
         /// <param name="workingDirectory">Optional working directory for Claude process. If null, uses AppConfig default.</param>
-        public ClaudeProcessManager(string? resumeSessionId = null, string? workingDirectory = null)
+        /// <param name="isNewSession">True se nuova sessione (invia /status), False se resume (Session ID già noto)</param>
+        public ClaudeProcessManager(string? resumeSessionId = null, string? workingDirectory = null, bool isNewSession = true)
         {
             _sessionId = resumeSessionId;
             _workingDirectory = workingDirectory ?? AppConfig.ClaudeWorkingDirectory;
+            _isNewSession = isNewSession;
             _isRunning = false;
             _wasKilled = false;
 
-            Log.Information("ClaudeProcessManager created with working directory: {WorkingDir}", _workingDirectory);
+            Log.Information("ClaudeProcessManager created with working directory: {WorkingDir}, isNewSession: {IsNewSession}", _workingDirectory, _isNewSession);
         }
 
         /// <summary>
@@ -257,9 +260,9 @@ namespace ClaudeGui.Blazor.Services
                         _outputBuffer.Append(output);
                     }
 
-                    // Rilevamento marker $$Ready$$: invia /status quando prompt è pronto
-                    // ⚠️ TEMPORANEAMENTE DISABILITATO per test manuale
-                    if (!_statusCommandSent && string.IsNullOrEmpty(_sessionId))
+                    // Rilevamento marker $$Ready$$: invia /status quando prompt è pronto (solo per nuove sessioni)
+                    // Se _isNewSession=false (resume), NON inviare /status perché Session ID è già noto
+                    if (!_statusCommandSent && _isNewSession && string.IsNullOrEmpty(_sessionId))
                     {
                         var bufferContent = _outputBuffer.ToString();
                         if (bufferContent.Contains("$$Ready$$"))
@@ -481,7 +484,7 @@ namespace ClaudeGui.Blazor.Services
             try
             {
                 Log.Information("Sending 'exit' command to Claude PTY session: {SessionId}", _sessionId ?? "unknown");
-                await SendRawInputAsync("exit\n");
+                await SendRawInputAsync("exit\r");
                 Log.Information("Exit command sent successfully");
             }
             catch (Exception ex)

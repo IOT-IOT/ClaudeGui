@@ -1,14 +1,12 @@
 @page "/"
 @using ClaudeGui.Blazor.Components
 @using ClaudeGui.Blazor.Services
-@using ClaudeGui.Blazor.Models.Entities
-@using Microsoft.EntityFrameworkCore
-@using ClaudeGui.Blazor.Data
-@inject IDbContextFactory<ClaudeGuiDbContext> DbContextFactory
+@using ClaudeGui.Blazor.Models
 @inject ITerminalManager TerminalManager
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
 @inject DbService DbService
+@inject SessionEventService SessionEvents
 
 <PageTitle>ClaudeGui - Terminal Sessions</PageTitle>
 
@@ -19,156 +17,23 @@
             <h1>🤖 ClaudeGui</h1>
             <p class="subtitle">Web-based Claude Code Terminal</p>
         </div>
-        <div class="header-stats">
-            <div class="stat-card">
-                <span class="stat-label">Active Sessions</span>
-                <span class="stat-value">@_activeSessions.Count</span>
-            </div>
-            <div class="stat-card">
-                <span class="stat-label">Database Sessions</span>
-                <span class="stat-value">@_dbSessions.Count</span>
-            </div>
-        </div>
     </div>
 
-    <!-- Action Section -->
-    @if (!_showTerminal)
+    <!-- Terminal Section -->
+    @if (_openTerminals.Any())
     {
-        <div class="action-section">
-            <div class="new-session-card">
-                <h2>🚀 Start New Session</h2>
-
-                <!-- Campo Nome Sessione (obbligatorio) -->
-                <div class="form-group">
-                    <label for="sessionName">Session Name: <span class="required">*</span></label>
-                    <input id="sessionName"
-                           type="text"
-                           class="form-control"
-                           @bind="_newSessionName"
-                           placeholder="My Claude Session"
-                           maxlength="255" />
-                    @if (_showValidationErrors && string.IsNullOrWhiteSpace(_newSessionName))
-                    {
-                        <span class="validation-error">⚠️ Session name is required</span>
-                    }
-                </div>
-
-                <!-- Campo Working Directory con Directory Picker -->
-                <div class="form-group">
-                    <label for="workingDir">Working Directory: <span class="required">*</span></label>
-                    <div class="input-with-button">
-                        <input id="workingDir"
-                               type="text"
-                               class="form-control"
-                               @bind="_newWorkingDirectory"
-                               placeholder="C:\temp" />
-                        <button class="btn btn-secondary btn-picker" @onclick="OpenDirectoryPicker" title="Browse for directory (Chrome/Edge only)">
-                            📂 Browse...
-                        </button>
-                    </div>
-                    @if (_showValidationErrors && string.IsNullOrWhiteSpace(_newWorkingDirectory))
-                    {
-                        <span class="validation-error">⚠️ Working directory is required</span>
-                    }
-                </div>
-
-                <button class="btn btn-primary btn-large" @onclick="StartNewSession">
-                    <span class="btn-icon">➕</span>
-                    Create New Session
-                </button>
+        <!-- Render tutti i terminal, nascondendo quelli inattivi con display:none -->
+        @foreach (var terminal in _openTerminals)
+        {
+            <div class="terminal-view" style="display: @(terminal.Key == _activeTerminalKey ? "block" : "none")">
+                <Terminal @key="@terminal.Key"
+                         WorkingDirectory="@terminal.WorkingDirectory"
+                         ExistingSessionId="@terminal.SessionId"
+                         SessionName="@terminal.SessionName"
+                         OnSessionInitialized="(connectionId) => HandleSessionInitialized(terminal.Key, connectionId)"
+                         OnProcessCompleted="() => HandleProcessCompleted(terminal.Key)" />
             </div>
-
-            <!-- Active Sessions -->
-            @if (_activeSessions.Any())
-            {
-                <div class="sessions-section">
-                    <h2>⚡ Active Sessions</h2>
-                    <div class="sessions-grid">
-                        @foreach (var sessionId in _activeSessions)
-                        {
-                            <div class="session-card active">
-                                <div class="session-header">
-                                    <span class="session-badge active">RUNNING</span>
-                                    <span class="session-id">@sessionId.Substring(0, 8)</span>
-                                </div>
-                                <div class="session-body">
-                                    <p class="session-info">
-                                        <strong>Session ID:</strong> @sessionId
-                                    </p>
-                                </div>
-                                <div class="session-actions">
-                                    <button class="btn btn-primary" @onclick="() => ResumeSession(sessionId)">
-                                        🔗 Attach
-                                    </button>
-                                    <button class="btn btn-danger" @onclick="() => KillSession(sessionId)">
-                                        🗑️ Kill
-                                    </button>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                </div>
-            }
-
-            <!-- Database Sessions -->
-            @if (_dbSessions.Any())
-            {
-                <div class="sessions-section">
-                    <h2>💾 Saved Sessions</h2>
-                    <div class="sessions-grid">
-                        @foreach (var session in _dbSessions.OrderByDescending(s => s.LastActivity).Take(10))
-                        {
-                            <div class="session-card">
-                                <div class="session-header">
-                                    <span class="session-badge">SAVED</span>
-                                    <span class="session-id">@session.SessionId.Substring(0, 8)</span>
-                                </div>
-                                <div class="session-body">
-                                    <p class="session-info">
-                                        <strong>Name:</strong> @(session.Name ?? "Unnamed")
-                                    </p>
-                                    <p class="session-info">
-                                        <strong>Working Dir:</strong> @(session.WorkingDirectory ?? "N/A")
-                                    </p>
-                                    <p class="session-info">
-                                        <strong>Last Activity:</strong> @session.LastActivity.ToString("yyyy-MM-dd HH:mm")
-                                    </p>
-                                    <p class="session-info">
-                                        <strong>Status:</strong> @session.Status
-                                    </p>
-                                </div>
-                                <div class="session-actions">
-                                    <button class="btn btn-secondary" @onclick="() => ResumeSession(session.SessionId, session.WorkingDirectory)">
-                                        🔄 Resume
-                                    </button>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                </div>
-            }
-
-            <!-- Empty State -->
-            @if (!_activeSessions.Any() && !_dbSessions.Any())
-            {
-                <div class="empty-state">
-                    <div class="empty-icon">📭</div>
-                    <h3>No Sessions Found</h3>
-                    <p>Create a new session to get started with Claude Code</p>
-                </div>
-            }
-        </div>
-    }
-    else
-    {
-        <!-- Terminal View -->
-        <div class="terminal-view">
-            <Terminal WorkingDirectory="@_currentWorkingDirectory"
-                     ExistingSessionId="@_currentSessionId"
-                     SessionName="@_newSessionName"
-                     OnClose="CloseTerminal"
-                     OnSessionInitialized="HandleSessionInitialized" />
-        </div>
+        }
     }
 
     <!-- Status Bar -->
@@ -178,166 +43,167 @@
             @_statusMessage
         </div>
     }
+
+    <!-- New Session Modal -->
+    <NewSessionModal OnSessionCreated="HandleSessionCreated" />
 </div>
 
 @code {
-    // State
-    private List<string> _activeSessions = new();
-    private List<Models.Entities.Session> _dbSessions = new();
-    private bool _showTerminal = false;
-    private string _currentWorkingDirectory = "C:\\temp";
-    private string? _currentSessionId = null;
-    private string _newSessionName = "";
-    private string _newWorkingDirectory = "C:\\temp";
-    private bool _showValidationErrors = false;
+    // Query Parameters (dal NavMenu quando si clicca una sessione)
+    [SupplyParameterFromQuery(Name = "sessionId")]
+    public string? QuerySessionId { get; set; }
+
+    [SupplyParameterFromQuery(Name = "sessionName")]
+    public string? QuerySessionName { get; set; }
+
+    [SupplyParameterFromQuery(Name = "workingDir")]
+    public string? QueryWorkingDir { get; set; }
+
+    [SupplyParameterFromQuery(Name = "isOpen")]
+    public bool QueryIsOpen { get; set; }
+
+    // State - Multi-terminal support
+    private List<TerminalInstance> _openTerminals = new();
+    private string? _activeTerminalKey = null; // Chiave del terminal attualmente visualizzato
     private string? _statusMessage = null;
     private string _statusClass = "info";
+    private bool _hasAutoLaunched = false; // Flag per evitare multipli auto-launch
 
     /// <summary>
-    /// OnInitializedAsync: carica sessioni attive e database all'avvio.
+    /// Rappresenta un'istanza di terminal aperta.
+    /// </summary>
+    private class TerminalInstance
+    {
+        public string Key { get; set; } = Guid.NewGuid().ToString();
+        public string? ConnectionId { get; set; } // SignalR ConnectionId (impostato dopo init)
+        public string? SessionId { get; set; } // Claude Session UUID
+        public string? SessionName { get; set; }
+        public string WorkingDirectory { get; set; } = "C:\\temp";
+    }
+
+    /// <summary>
+    /// OnInitializedAsync: carica ultima sessione open all'avvio (solo se nessun query parameter).
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
-        await LoadActiveSessions();
-        await LoadDatabaseSessions();
-    }
-
-    /// <summary>
-    /// Carica le sessioni attive dal TerminalManager.
-    /// </summary>
-    private async Task LoadActiveSessions()
-    {
-        try
+        // Auto-launch ultima sessione open solo se NON ci sono query parameters
+        if (string.IsNullOrEmpty(QuerySessionId) && !_hasAutoLaunched)
         {
-            _activeSessions = TerminalManager.GetActiveSessions().ToList();
-        }
-        catch (Exception ex)
-        {
-            SetStatus($"Error loading active sessions: {ex.Message}", "error");
-        }
-    }
-
-    /// <summary>
-    /// Carica le sessioni salvate dal database.
-    /// </summary>
-    private async Task LoadDatabaseSessions()
-    {
-        try
-        {
-            await using var db = await DbContextFactory.CreateDbContextAsync();
-            _dbSessions = await db.Sessions
-                .AsNoTracking()
-                .OrderByDescending(s => s.LastActivity)
-                .Take(20)
-                .ToListAsync();
-        }
-        catch (Exception ex)
-        {
-            SetStatus($"Error loading database sessions: {ex.Message}", "error");
-        }
-    }
-
-    /// <summary>
-    /// Avvia una nuova sessione terminal.
-    /// Valida che nome sessione e working directory siano obbligatori.
-    /// Verifica che il nome sessione non esista già nel database.
-    /// </summary>
-    private async Task StartNewSession()
-    {
-        // Mostra errori di validazione
-        _showValidationErrors = true;
-
-        // Validazione campo Nome Sessione (obbligatorio)
-        if (string.IsNullOrWhiteSpace(_newSessionName))
-        {
-            SetStatus("❌ Session name is required", "error");
-            return;
-        }
-
-        // Validazione campo Working Directory (obbligatorio)
-        if (string.IsNullOrWhiteSpace(_newWorkingDirectory))
-        {
-            SetStatus("❌ Working directory is required", "error");
-            return;
-        }
-
-        // ✅ VERIFICA: Il nome sessione non deve esistere già nel DB
-        // (controllo PRIMA di lanciare il processo Claude)
-        try
-        {
-            var nameExists = await DbService.SessionNameExistsAsync(_newSessionName);
-            if (nameExists)
+            try
             {
-                SetStatus($"❌ Session name '{_newSessionName}' already exists. Please choose a different name.", "error");
-                return;
+                // Ottieni ultima sessione open dal DB (OrderByDescending LastActivity)
+                var openSessions = await DbService.GetOpenSessionsAsync();
+                var lastSession = openSessions.FirstOrDefault();
+
+                if (lastSession != null)
+                {
+                    _hasAutoLaunched = true;
+                    ResumeSession(lastSession.SessionId, lastSession.Name, lastSession.WorkingDirectory);
+                    SetStatus($"Auto-launched last session: {lastSession.Name ?? lastSession.SessionId.Substring(0, 8)}", "info");
+                }
+            }
+            catch (Exception ex)
+            {
+                SetStatus($"Error auto-launching last session: {ex.Message}", "error");
             }
         }
-        catch (Exception ex)
-        {
-            SetStatus($"❌ Error checking session name: {ex.Message}", "error");
-            return;
-        }
-
-        // Salva il nome sessione per passarlo al componente Terminal
-        // (verrà usato quando la sessione viene salvata nel DB)
-        _currentWorkingDirectory = _newWorkingDirectory;
-        _currentSessionId = null; // Nuova sessione
-        _showTerminal = true;
-        _showValidationErrors = false; // Reset validazione
-
-        SetStatus($"Starting new session '{_newSessionName}'...", "info");
     }
 
     /// <summary>
-    /// Apre il directory picker nativo tramite JavaScript (Chrome/Edge only).
-    /// Fallback graceful per browser non supportati (Firefox/Safari).
+    /// OnParametersSet: gestisce navigazione da NavMenu tramite query parameters.
+    /// Avvia automaticamente il terminal quando vengono passati sessionId e workingDir.
     /// </summary>
-    private async Task OpenDirectoryPicker()
+    protected override void OnParametersSet()
     {
-        try
+        // Se abbiamo query parameters per una sessione, avvia il terminal
+        if (!string.IsNullOrEmpty(QuerySessionId) && !string.IsNullOrEmpty(QueryWorkingDir))
         {
-            // Chiama funzione JavaScript per aprire directory picker
-            var selectedDir = await JSRuntime.InvokeAsync<string>("ClaudeTerminal.pickDirectory");
+            // Resume/attach alla sessione selezionata
+            ResumeSession(QuerySessionId, QuerySessionName, QueryWorkingDir);
+        }
+    }
 
-            if (selectedDir != null)
-            {
-                // Directory selezionata - aggiorna il campo input
-                // NOTA: File System Access API non espone il path completo
-                // L'utente dovrà digitare manualmente il path completo
-                SetStatus($"⚠️ Directory picker: digita il path completo (es. C:\\Users\\enrico\\{selectedDir})", "info");
-            }
-            else
-            {
-                // Annullato o non supportato
-                SetStatus("ℹ️ Directory picker non supportato. Usa Chrome/Edge o digita manualmente il path.", "info");
-            }
-        }
-        catch (Exception ex)
+    /// <summary>
+    /// Handler chiamato dal NewSessionModal quando una sessione viene creata.
+    /// Riceve sessionName e workingDirectory dal modal e avvia il terminal.
+    /// La validazione è già stata eseguita dal modal.
+    /// </summary>
+    private void HandleSessionCreated((string sessionName, string workingDirectory) sessionData)
+    {
+        // Crea nuovo TerminalInstance e aggiungilo alla lista
+        var newTerminal = new TerminalInstance
         {
-            SetStatus($"Error opening directory picker: {ex.Message}", "error");
-        }
+            SessionName = sessionData.sessionName,
+            WorkingDirectory = sessionData.workingDirectory,
+            SessionId = null // Nuova sessione (ConnectionId sarà impostato in OnSessionInitialized)
+        };
+
+        _openTerminals.Add(newTerminal);
+        _activeTerminalKey = newTerminal.Key; // Rendi attivo il nuovo terminal
+
+        SetStatus($"Starting new session '{sessionData.sessionName}'...", "info");
     }
 
     /// <summary>
     /// Riprende una sessione esistente (attiva o da database).
+    /// Se terminal già aperto in UI → solo switch visualizzazione (NO modifica DB).
+    /// Altrimenti crea nuovo terminal con --resume.
     /// </summary>
-    private void ResumeSession(string sessionId, string? workingDirectory = null)
+    private void ResumeSession(string sessionId, string? sessionName, string? workingDirectory = null)
     {
-        _currentSessionId = sessionId;
-        _currentWorkingDirectory = workingDirectory ?? "C:\\temp";
-        _showTerminal = true;
-        SetStatus($"Resuming session {sessionId.Substring(0, 8)}...", "info");
+        // CASO 1: Terminal già aperto in UI → solo switch visualizzazione
+        var existingTerminal = _openTerminals.FirstOrDefault(t =>
+            t.SessionId == sessionId ||
+            t.ConnectionId == sessionId);
+
+        if (existingTerminal != null)
+        {
+            // Terminal già presente → solo cambia visualizzazione (NO modifica DB!)
+            _activeTerminalKey = existingTerminal.Key;
+            SetStatus($"Switched to session {sessionName ?? sessionId.Substring(0, 8)}", "info");
+            return;
+        }
+
+        // CASO 2: Sessione attiva in TerminalManager ma non in UI → crea terminal per collegarsi
+        if (TerminalManager.HasActiveSession(sessionId))
+        {
+            var connectionId = TerminalManager.GetConnectionIdByClaudeSessionId(sessionId);
+            if (connectionId != null)
+            {
+                var newTerminal = new TerminalInstance
+                {
+                    SessionId = sessionId,
+                    SessionName = sessionName,
+                    WorkingDirectory = workingDirectory ?? "C:\\temp",
+                    ConnectionId = connectionId
+                };
+                _openTerminals.Add(newTerminal);
+                _activeTerminalKey = newTerminal.Key;
+                SetStatus($"Attached to running session {sessionName ?? sessionId.Substring(0, 8)}", "success");
+                return;
+            }
+        }
+
+        // CASO 3: Sessione closed nel DB → avvia nuovo processo con --resume
+        var resumeTerminal = new TerminalInstance
+        {
+            SessionId = sessionId,
+            SessionName = sessionName,
+            WorkingDirectory = workingDirectory ?? "C:\\temp"
+        };
+        _openTerminals.Add(resumeTerminal);
+        _activeTerminalKey = resumeTerminal.Key;
+        SetStatus($"Resuming session {sessionName ?? sessionId.Substring(0, 8)} from database...", "info");
     }
 
     /// <summary>
     /// Termina una sessione attiva.
     /// </summary>
-    private async Task KillSession(string sessionId)
+    private void KillSession(string sessionId)
     {
         try
         {
             TerminalManager.KillSession(sessionId);
-            await LoadActiveSessions();
             SetStatus($"Session {sessionId.Substring(0, 8)} killed", "success");
         }
         catch (Exception ex)
@@ -347,24 +213,56 @@
     }
 
     /// <summary>
-    /// Chiude il terminal e torna alla lista sessioni.
+    /// Handler chiamato quando una sessione terminal è stata inizializzata.
+    /// Riceve il ConnectionId dal componente Terminal e aggiorna TerminalInstance.
     /// </summary>
-    private async Task CloseTerminal()
+    private void HandleSessionInitialized(string terminalKey, string connectionId)
     {
-        _showTerminal = false;
-        _currentSessionId = null;
-        await LoadActiveSessions();
-        await LoadDatabaseSessions();
-        SetStatus("Terminal closed", "info");
+        // Trova TerminalInstance corrispondente e aggiorna ConnectionId
+        var terminal = _openTerminals.FirstOrDefault(t => t.Key == terminalKey);
+        if (terminal != null)
+        {
+            terminal.ConnectionId = connectionId;
+            Console.WriteLine($"[Index.razor] Terminal {terminalKey.Substring(0, 8)} initialized with ConnectionId {connectionId.Substring(0, 8)}");
+        }
+
+        SetStatus($"Session {connectionId.Substring(0, 8)} initialized successfully", "success");
     }
 
     /// <summary>
-    /// Handler chiamato quando una sessione terminal è stata inizializzata.
+    /// Handler chiamato quando il processo Claude termina.
+    /// Rimuove il terminal dalla lista e aggiorna la UI.
+    /// NOTA: TerminalManager già aggiorna DB status='closed' e rimuove da _activeSessions.
     /// </summary>
-    private void HandleSessionInitialized(string sessionId)
+    private async Task HandleProcessCompleted(string terminalKey)
     {
-        _currentSessionId = sessionId;
-        SetStatus($"Session {sessionId.Substring(0, 8)} initialized successfully", "success");
+        Console.WriteLine($"[Index.razor] Process completed for terminal {terminalKey.Substring(0, 8)}");
+
+        // Trova e rimuovi TerminalInstance dalla lista
+        var terminal = _openTerminals.FirstOrDefault(t => t.Key == terminalKey);
+        if (terminal != null)
+        {
+            _openTerminals.Remove(terminal);
+            Console.WriteLine($"[Index.razor] Removed terminal {terminalKey.Substring(0, 8)} from list");
+
+            // Se era quello attivo, switcha a un altro o nasconde tutto
+            if (_activeTerminalKey == terminalKey)
+            {
+                _activeTerminalKey = _openTerminals.FirstOrDefault()?.Key;
+                Console.WriteLine($"[Index.razor] Active terminal closed, switched to: {_activeTerminalKey?.Substring(0, 8) ?? "none"}");
+            }
+
+            SetStatus($"Session {terminal.SessionName ?? terminal.ConnectionId?.Substring(0, 8) ?? "unknown"} closed", "info");
+        }
+
+        // Forza aggiornamento UI
+        StateHasChanged();
+
+        // Breve delay per permettere al DB di aggiornarsi
+        await Task.Delay(500);
+
+        // Notifica NavMenu per aggiornare lista sessioni
+        SessionEvents.NotifySessionListChanged();
     }
 
     /// <summary>

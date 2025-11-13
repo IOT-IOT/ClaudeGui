@@ -43,10 +43,17 @@ public interface ITerminalManager
     void KillSession(string sessionId);
 
     /// <summary>
-    /// Ottiene tutte le sessioni attive.
+    /// Ottiene tutte le sessioni attive (solo ConnectionId).
     /// </summary>
-    /// <returns>Elenco degli ID di sessione attive</returns>
+    /// <returns>Elenco dei ConnectionId delle sessioni attive</returns>
     IEnumerable<string> GetActiveSessions();
+
+    /// <summary>
+    /// Ottiene informazioni complete su tutte le sessioni attive.
+    /// Include ConnectionId, ClaudeSessionId, SessionName, WorkingDirectory, ecc.
+    /// </summary>
+    /// <returns>Lista di ActiveSessionInfo con metadata completo</returns>
+    List<Models.ActiveSessionInfo> GetActiveSessionsInfo();
 
     /// <summary>
     /// Conta sessioni attive.
@@ -66,4 +73,24 @@ public interface ITerminalManager
     /// <param name="sessionId">Session ID</param>
     /// <returns>True se la sessione esiste ed è in esecuzione</returns>
     bool IsSessionRunning(string sessionId);
+
+    /// <summary>
+    /// Verifica se una sessione Claude è già attiva in memoria.
+    /// </summary>
+    /// <param name="claudeSessionId">Claude Session ID (UUID)</param>
+    /// <returns>True se la sessione è già in memoria</returns>
+    bool HasActiveSession(string claudeSessionId);
+
+    /// <summary>
+    /// Ottiene il ConnectionId associato a un ClaudeSessionId.
+    /// </summary>
+    /// <param name="claudeSessionId">Claude Session ID (UUID)</param>
+    /// <returns>ConnectionId se trovato, altrimenti null</returns>
+    string? GetConnectionIdByClaudeSessionId(string claudeSessionId);
+
+    /// <summary>
+    /// Invia comando "exit\r" per chiudere gracefully una sessione.
+    /// </summary>
+    /// <param name="connectionId">SignalR Connection ID</param>
+    Task SendExit(string connectionId);
 }

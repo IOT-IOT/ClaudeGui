@@ -40,15 +40,15 @@ window.ClaudeTerminal = (function () {
             .build();
 
         // Event handlers per messaggi dal server
-        hubConnection.on('ReceiveOutput', (rawOutput) => {
-            console.log('[ClaudeTerminal] ReceiveOutput:', rawOutput);
-            handleOutputReceived(rawOutput);
+        hubConnection.on('ReceiveOutput', (connectionId, rawOutput) => {
+            console.log('[ClaudeTerminal] ReceiveOutput - connectionId:', connectionId, 'rawOutput length:', rawOutput?.length);
+            handleOutputReceived(connectionId, rawOutput);
         });
 
         // ✅ SessionIdDetected handler: riceve il Session ID di Claude quando rilevato
-        hubConnection.on('SessionIdDetected', (claudeSessionId) => {
-            console.log('[ClaudeTerminal] ✅ Claude Session ID detected:', claudeSessionId);
-            handleSessionIdDetected(claudeSessionId);
+        hubConnection.on('SessionIdDetected', (connectionId, claudeSessionId) => {
+            console.log('[ClaudeTerminal] ✅ Claude Session ID detected for terminal:', connectionId, 'sessionId:', claudeSessionId);
+            handleSessionIdDetected(connectionId, claudeSessionId);
         });
 
         hubConnection.on('ReceiveError', (error) => {
@@ -61,9 +61,9 @@ window.ClaudeTerminal = (function () {
             handleFatalError(error, sessionId);
         });
 
-        hubConnection.on('ProcessCompleted', (exitCode, wasKilled) => {
-            console.log('[ClaudeTerminal] ProcessCompleted - ExitCode:', exitCode, 'WasKilled:', wasKilled);
-            handleProcessCompleted(exitCode, wasKilled);
+        hubConnection.on('ProcessCompleted', (connectionId, exitCode, wasKilled) => {
+            console.log('[ClaudeTerminal] ProcessCompleted - ConnectionId:', connectionId, 'ExitCode:', exitCode, 'WasKilled:', wasKilled);
+            handleProcessCompleted(connectionId, exitCode, wasKilled);
         });
 
         hubConnection.on('SessionTerminated', (sessionId) => {
@@ -106,17 +106,25 @@ window.ClaudeTerminal = (function () {
     /**
      * Handler per output ricevuto dal server (raw output da Claude stdout).
      * In modalità interactive, Claude emette output normale con ANSI escape codes.
+     * @param {string} connectionId - Connection ID univoco del terminal (per routing)
      * @param {string} rawOutput - Raw output ricevuto da Claude
      */
-    function handleOutputReceived(rawOutput) {
+    function handleOutputReceived(connectionId, rawOutput) {
         try {
+            console.log('[ClaudeTerminal] handleOutputReceived - connectionId type:', typeof connectionId, 'value:', connectionId);
+            console.log('[ClaudeTerminal] handleOutputReceived - rawOutput type:', typeof rawOutput, 'value:', rawOutput?.substring(0, 50));
+
             // In modalità interactive, scriviamo direttamente l'output a xterm.js
             // xterm.js gestisce automaticamente ANSI escape codes, colori, ecc.
 
-            // Trova il terminal corretto (broadcast a tutti per ora, migliora con sessionId se necessario)
-            terminals.forEach((terminalData) => {
+            // ✅ ROUTING CORRETTO: Invia output SOLO al terminal specifico
+            const terminalData = terminals.get(connectionId);
+            if (terminalData) {
                 terminalData.terminal.write(rawOutput);
-            });
+            } else {
+                console.warn('[ClaudeTerminal] ⚠️ Output ricevuto per terminal sconosciuto:', connectionId);
+                console.log('[ClaudeTerminal] Terminals disponibili:', Array.from(terminals.keys()));
+            }
         } catch (err) {
             console.error('[ClaudeTerminal] Errore writing output:', err);
         }
@@ -126,30 +134,27 @@ window.ClaudeTerminal = (function () {
      * ✅ Handler per Session ID di Claude rilevato dal backend.
      * Chiamato quando il backend rileva il Session ID dall'output di /status.
      * Notifica il componente Blazor per aggiornare la UI.
+     * @param {string} connectionId - Connection ID del terminal
      * @param {string} claudeSessionId - UUID del Session ID di Claude
      */
-    function handleSessionIdDetected(claudeSessionId) {
+    function handleSessionIdDetected(connectionId, claudeSessionId) {
         try {
-            console.log('[ClaudeTerminal] 🎯 Handling Claude Session ID:', claudeSessionId);
+            console.log('[ClaudeTerminal] 🎯 Session ID detected for terminal:', connectionId, 'sessionId:', claudeSessionId);
 
-            // Trova il terminal che ha questo Session ID e notifica il componente Blazor
-            terminals.forEach((terminalData, connectionId) => {
-                if (terminalData.sessionId === connectionId) {
-                    // Notifica Blazor component se ha un riferimento .NET
-                    if (terminalData.dotNetRef) {
-                        console.log('[ClaudeTerminal] Calling Blazor OnSessionIdDetected...');
-                        terminalData.dotNetRef.invokeMethodAsync('OnSessionIdDetected', claudeSessionId)
-                            .then(() => {
-                                console.log('[ClaudeTerminal] ✅ Blazor UI updated with Session ID');
-                            })
-                            .catch(err => {
-                                console.error('[ClaudeTerminal] Error calling Blazor:', err);
-                            });
-                    } else {
-                        console.warn('[ClaudeTerminal] No dotNetRef found for terminal:', connectionId);
-                    }
-                }
-            });
+            // ✅ ROUTING CORRETTO: Notifica SOLO il terminal specifico
+            const terminalData = terminals.get(connectionId);
+            if (terminalData && terminalData.dotNetRef) {
+                console.log('[ClaudeTerminal] Calling Blazor OnSessionIdDetected for terminal:', connectionId);
+                terminalData.dotNetRef.invokeMethodAsync('OnSessionIdDetected', claudeSessionId)
+                    .then(() => {
+                        console.log('[ClaudeTerminal] ✅ Blazor UI updated with Session ID');
+                    })
+                    .catch(err => {
+                        console.error('[ClaudeTerminal] Error calling Blazor:', err);
+                    });
+            } else {
+                console.warn('[ClaudeTerminal] ⚠️ SessionIdDetected per terminal sconosciuto o senza dotNetRef:', connectionId);
+            }
         } catch (err) {
             console.error('[ClaudeTerminal] Error handling SessionIdDetected:', err);
         }
@@ -206,16 +211,30 @@ window.ClaudeTerminal = (function () {
 
     /**
      * Handler per completamento processo Claude.
+     * @param {string} connectionId - Connection ID del terminal
      * @param {number} exitCode - Exit code del processo
      * @param {boolean} wasKilled - True se processo terminato forzatamente
      */
-    function handleProcessCompleted(exitCode, wasKilled) {
-        terminals.forEach((terminalData) => {
+    function handleProcessCompleted(connectionId, exitCode, wasKilled) {
+        console.log('[ClaudeTerminal] handleProcessCompleted - routing to terminal:', connectionId);
+
+        // ✅ ROUTING CORRETTO: Invia evento SOLO al terminal specifico
+        const terminalData = terminals.get(connectionId);
+        if (terminalData) {
             const message = wasKilled
                 ? '\r\n\x1b[33m[Processo terminato forzatamente]\x1b[0m\r\n'
                 : `\r\n\x1b[32m[Processo completato - Exit code: ${exitCode}]\x1b[0m\r\n`;
             terminalData.terminal.write(message);
-        });
+
+            // Invoke Blazor callback to notify Terminal.razor
+            if (terminalData.dotNetRef) {
+                terminalData.dotNetRef.invokeMethodAsync('OnProcessCompletedCallback')
+                    .catch(err => console.error('[ClaudeTerminal] Error invoking OnProcessCompletedCallback:', err));
+            }
+        } else {
+            console.warn('[ClaudeTerminal] ⚠️ ProcessCompleted per terminal sconosciuto:', connectionId);
+            console.log('[ClaudeTerminal] Terminals disponibili:', Array.from(terminals.keys()));
+        }
     }
 
     /**
@@ -279,23 +298,44 @@ window.ClaudeTerminal = (function () {
                     brightCyan: '#29b8db',
                     brightWhite: '#e5e5e5'
                 },
-                rows: 30,
-                cols: 120
+                scrollback: 10000, // Buffer per scrollback - permette di scrollare fino a 10000 righe precedenti
+                convertEol: false, // Mantieni gestione EOL del PTY
+                allowTransparency: false
             });
+
+            // Crea FitAddon per adattare automaticamente il terminale al container
+            const fitAddon = new FitAddon.FitAddon();
+            terminal.loadAddon(fitAddon);
 
             // Apri terminal nell'elemento DOM
             terminal.open(terminalElement);
 
-            // 3. Gestione input utente (onData = input da tastiera)
+            // Adatta le dimensioni del terminale al container
+            // Timeout per dare tempo al DOM di renderizzare
+            setTimeout(() => {
+                try {
+                    fitAddon.fit();
+                    console.log('[ClaudeTerminal] Terminal fitted to container - rows:', terminal.rows, 'cols:', terminal.cols);
+                } catch (err) {
+                    console.error('[ClaudeTerminal] Error fitting terminal:', err);
+                }
+            }, 100);
+
+            // 3. Genera connectionId univoco per questo terminal
+            // ⚠️ IMPORTANTE: In Blazor Server, tutti i component condividono lo stesso Context.ConnectionId!
+            // Usiamo elementId come connectionId univoco per distinguere i terminal.
+            const uniqueConnectionId = elementId;
+            console.log('[ClaudeTerminal] Using unique connectionId:', uniqueConnectionId);
+
+            // 4. Gestione input utente (onData = input da tastiera)
             // Con PTY, inviamo OGNI carattere immediatamente al backend.
             // Il PTY gestisce echo, line buffering, e tutto il resto come un vero terminal.
-            // SignalR usa automaticamente ConnectionId per trovare la sessione.
             // ⚡ IMPORTANTE: NO await - fire-and-forget per evitare serializzazione dei caratteri
             terminal.onData((data) => {
                 // ✅ Fire-and-forget: invia IMMEDIATAMENTE senza aspettare risposta
                 // ✅ Ogni carattere viene inviato in parallelo, senza bloccare i successivi
                 // ✅ NO await - altrimenti i caratteri vengono serializzati e arrivano in ritardo
-                hubConnection.invoke('SendInput', data).catch(err => {
+                hubConnection.invoke('SendInput', uniqueConnectionId, data).catch(err => {
                     console.error('[ClaudeTerminal] Errore invio input:', err);
                     terminal.write(`\r\n\x1b[31m[Errore invio: ${err.message}]\x1b[0m\r\n`);
                 });
@@ -312,30 +352,37 @@ window.ClaudeTerminal = (function () {
             });
             console.log('[ClaudeTerminal] Terminal registered with temp ID:', tempId);
 
-            // 5. Chiama CreateSession - ASPETTA il Session ID reale di Claude
+            // 5. Chiama CreateSession con connectionId univoco
             // Durante l'attesa, il terminal riceve già output tramite handleOutputReceived
-            console.log('[ClaudeTerminal] Calling CreateSession (will wait for real Session ID)...');
-            const realSessionId = await hubConnection.invoke('CreateSession', workingDirectory, sessionId, sessionName);
-            console.log('[ClaudeTerminal] ✅ Received real Session ID:', realSessionId);
+            console.log('[ClaudeTerminal] Calling CreateSession with unique connectionId:', uniqueConnectionId);
+            const returnedConnectionId = await hubConnection.invoke('CreateSession', workingDirectory, sessionId, sessionName, uniqueConnectionId);
+            console.log('[ClaudeTerminal] ✅ CreateSession returned connectionId:', returnedConnectionId);
 
-            // 6. Aggiorna mappa con Session ID reale (ConnectionId)
+            // 6. Aggiorna mappa con ConnectionId reale
             const terminalData = terminals.get(tempId);
             terminals.delete(tempId); // Rimuovi entry temporanea
-            terminals.set(realSessionId, {
+            terminals.set(returnedConnectionId, {
                 ...terminalData,
-                sessionId: realSessionId,
+                sessionId: returnedConnectionId,
                 dotNetRef: dotNetRef // Preserva riferimento .NET
             });
-            console.log('[ClaudeTerminal] Terminal remapped:', tempId, '→', realSessionId);
+            console.log('[ClaudeTerminal] Terminal remapped:', tempId, '→', returnedConnectionId);
 
-            // 7. Registra handler per resize (ora abbiamo il Session ID reale)
+            // 7. Registra handler per resize (ora abbiamo il ConnectionId)
             terminal.onResize(({ cols, rows }) => {
                 console.log('[ClaudeTerminal] Terminal resized:', { cols, rows });
-                hubConnection.invoke('ResizeTerminal', realSessionId, cols, rows)
+                hubConnection.invoke('ResizeTerminal', returnedConnectionId, cols, rows)
                     .catch(err => console.error('[ClaudeTerminal] Error sending resize:', err));
             });
 
-            return realSessionId;
+            // 8. Invia dimensioni iniziali al PTY backend dopo fit()
+            setTimeout(() => {
+                console.log('[ClaudeTerminal] Sending initial terminal size to PTY:', terminal.rows, 'x', terminal.cols);
+                hubConnection.invoke('ResizeTerminal', returnedConnectionId, terminal.cols, terminal.rows)
+                    .catch(err => console.error('[ClaudeTerminal] Error sending initial resize:', err));
+            }, 200);
+
+            return returnedConnectionId;
 
         } catch (err) {
             console.error('[ClaudeTerminal] Errore init():', err);
@@ -447,12 +494,58 @@ window.ClaudeTerminal = (function () {
         }
     }
 
+    /**
+     * Apre un modal Bootstrap tramite JavaScript.
+     * @param {string} modalId - L'ID del modal da aprire (es. "newSessionModal")
+     */
+    function openModal(modalId) {
+        try {
+            const modalElement = document.getElementById(modalId);
+            if (!modalElement) {
+                console.error(`[ClaudeTerminal] Modal con ID '${modalId}' non trovato`);
+                return;
+            }
+
+            // Usa Bootstrap 5 API per aprire il modal
+            const modal = new bootstrap.Modal(modalElement);
+            modal.show();
+            console.log(`[ClaudeTerminal] Modal '${modalId}' aperto`);
+        } catch (err) {
+            console.error('[ClaudeTerminal] Errore apertura modal:', err);
+        }
+    }
+
+    /**
+     * Chiude un modal Bootstrap tramite JavaScript.
+     * @param {string} modalId - L'ID del modal da chiudere (es. "newSessionModal")
+     */
+    function closeModal(modalId) {
+        try {
+            const modalElement = document.getElementById(modalId);
+            if (!modalElement) {
+                console.error(`[ClaudeTerminal] Modal con ID '${modalId}' non trovato`);
+                return;
+            }
+
+            // Usa Bootstrap 5 API per chiudere il modal
+            const modalInstance = bootstrap.Modal.getInstance(modalElement);
+            if (modalInstance) {
+                modalInstance.hide();
+                console.log(`[ClaudeTerminal] Modal '${modalId}' chiuso`);
+            }
+        } catch (err) {
+            console.error('[ClaudeTerminal] Errore chiusura modal:', err);
+        }
+    }
+
     // API pubblica
     return {
         init: init,
         dispose: dispose,
         getSessionInfo: getSessionInfo,
         getActiveSessions: getActiveSessions,
-        pickDirectory: pickDirectory
+        pickDirectory: pickDirectory,
+        openModal: openModal,
+        closeModal: closeModal
     };
 })();

@@ -183,6 +183,13 @@ a, .btn-link {
     50% { opacity: 0.5; }
 }
 
+/* Stile generico per "Detecting..." */
+.detecting {
+    color: #ce9178; /* Arancione */
+    font-style: italic;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
 .working-dir {
     color: #9cdcfe; /* Azzurro per working directory */
     font-weight: 400;
@@ -209,5 +216,6 @@ a, .btn-link {
 .terminal-container {
     flex: 1;
     background-color: #1e1e1e;
-    overflow: hidden;
+    overflow: auto; /* Permette scroll quando contenuto supera viewport */
+    position: relative;
 }

@@ -1,0 +1,186 @@
+@using ClaudeGui.Blazor.Services
+@inject DbService DbService
+@inject IJSRuntime JSRuntime
+
+<!-- Bootstrap Modal -->
+<div class="modal fade" id="newSessionModal" tabindex="-1" aria-labelledby="newSessionModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="newSessionModalLabel">🚀 Create New Session</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form>
+                    <!-- Campo Nome Sessione (obbligatorio) -->
+                    <div class="mb-3">
+                        <label for="modalSessionName" class="form-label">Session Name <span class="required">*</span></label>
+                        <input id="modalSessionName"
+                               name="sessionName"
+                               type="text"
+                               class="form-control"
+                               autocomplete="on"
+                               @bind="_sessionName"
+                               placeholder="My Claude Session"
+                               maxlength="255" />
+                        @if (_showValidationErrors && string.IsNullOrWhiteSpace(_sessionName))
+                        {
+                            <span class="validation-error">⚠️ Session name is required</span>
+                        }
+                    </div>
+
+                    <!-- Campo Working Directory con Directory Picker -->
+                    <div class="mb-3">
+                        <label for="modalWorkingDir" class="form-label">Working Directory <span class="required">*</span></label>
+                        <div class="input-with-button">
+                            <input id="modalWorkingDir"
+                                   name="workingDirectory"
+                                   type="text"
+                                   class="form-control"
+                                   autocomplete="on"
+                                   @bind="_workingDirectory"
+                                   placeholder="C:\temp" />
+                            <button type="button" class="btn btn-secondary btn-picker" @onclick="OpenDirectoryPicker" title="Browse for directory (Chrome/Edge only)">
+                                📂 Browse...
+                            </button>
+                        </div>
+                        @if (_showValidationErrors && string.IsNullOrWhiteSpace(_workingDirectory))
+                        {
+                            <span class="validation-error">⚠️ Working directory is required</span>
+                        }
+                    </div>
+
+                    <!-- Messaggio di errore -->
+                    @if (!string.IsNullOrEmpty(_errorMessage))
+                    {
+                        <div class="alert alert-danger" role="alert">
+                            @_errorMessage
+                        </div>
+                    }
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" @onclick="HandleCreateSession">
+                    <span class="btn-icon">➕</span>
+                    Create Session
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// EventCallback chiamato quando la sessione viene creata con successo.
+    /// Passa sessionName e workingDirectory al componente parent.
+    /// </summary>
+    [Parameter]
+    public EventCallback<(string sessionName, string workingDirectory)> OnSessionCreated { get; set; }
+
+    private string _sessionName = "";
+    private string _workingDirectory = "C:\\temp";
+    private bool _showValidationErrors = false;
+    private string? _errorMessage = null;
+
+    /// <summary>
+    /// Gestisce la creazione della sessione con validazione completa.
+    /// </summary>
+    private async Task HandleCreateSession()
+    {
+        // Reset errori
+        _errorMessage = null;
+        _showValidationErrors = true;
+
+        // Validazione campo Nome Sessione (obbligatorio)
+        if (string.IsNullOrWhiteSpace(_sessionName))
+        {
+            _errorMessage = "Session name is required";
+            return;
+        }
+
+        // Validazione campo Working Directory (obbligatorio)
+        if (string.IsNullOrWhiteSpace(_workingDirectory))
+        {
+            _errorMessage = "Working directory is required";
+            return;
+        }
+
+        // Verifica che il nome sessione non esista già nel DB
+        try
+        {
+            var nameExists = await DbService.SessionNameExistsAsync(_sessionName);
+            if (nameExists)
+            {
+                _errorMessage = $"Session name '{_sessionName}' already exists. Please choose a different name.";
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error checking session name: {ex.Message}";
+            return;
+        }
+
+        // Validazione OK - chiudi modal e notifica parent
+        await CloseModal();
+
+        // Notifica parent component per avviare la sessione
+        if (OnSessionCreated.HasDelegate)
+        {
+            await OnSessionCreated.InvokeAsync((_sessionName, _workingDirectory));
+        }
+
+        // Reset form per prossima apertura
+        ResetForm();
+    }
+
+    /// <summary>
+    /// Apre il directory picker nativo tramite JavaScript (Chrome/Edge only).
+    /// </summary>
+    private async Task OpenDirectoryPicker()
+    {
+        try
+        {
+            var selectedDir = await JSRuntime.InvokeAsync<string>("ClaudeTerminal.pickDirectory");
+
+            if (selectedDir != null)
+            {
+                // Directory picker non fornisce path completo - mostra hint
+                _errorMessage = $"⚠️ Directory picker: type full path (e.g., C:\\Users\\enrico\\{selectedDir})";
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error opening directory picker: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Chiude il modal via JavaScript.
+    /// </summary>
+    private async Task CloseModal()
+    {
+        await JSRuntime.InvokeVoidAsync("ClaudeTerminal.closeModal", "newSessionModal");
+    }
+
+    /// <summary>
+    /// Reset del form dopo creazione sessione.
+    /// </summary>
+    private void ResetForm()
+    {
+        _sessionName = "";
+        _workingDirectory = "C:\\temp";
+        _showValidationErrors = false;
+        _errorMessage = null;
+    }
+
+    /// <summary>
+    /// Metodo pubblico per aprire il modal da componente parent.
+    /// </summary>
+    public async Task OpenModal()
+    {
+        ResetForm();
+        await JSRuntime.InvokeVoidAsync("ClaudeTerminal.openModal", "newSessionModal");
+    }
+}

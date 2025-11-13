@@ -1,4 +1,16 @@
-﻿<div class="top-row ps-3 navbar navbar-dark">
+@using ClaudeGui.Blazor.Models
+@using ClaudeGui.Blazor.Models.Entities
+@using ClaudeGui.Blazor.Services
+@using ClaudeGui.Blazor.Data
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<ClaudeGuiDbContext> DbContextFactory
+@inject ITerminalManager TerminalManager
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@inject SessionEventService SessionEvents
+@implements IDisposable
+
+<div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
         <a class="navbar-brand" href="">ClaudeGui.Blazor</a>
         <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
@@ -7,38 +19,386 @@
     </div>
 </div>
 
-<div class="@NavMenuCssClass" @onclick="ToggleNavMenu">
-    <nav class="flex-column">
+<div class="@NavMenuCssClass" @onclick="ToggleNavMenu" @onclick:stopPropagation>
+    <nav class="flex-column" @onclick="() => _showContextMenu = false">
+        <!-- Home e New Session -->
         <div class="nav-item px-3">
             <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
                 <span class="oi oi-home" aria-hidden="true"></span> Home
             </NavLink>
         </div>
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="counter">
-                <span class="oi oi-plus" aria-hidden="true"></span> Counter
-            </NavLink>
+            <a class="nav-link" href="#" @onclick="OpenNewSessionModal" @onclick:preventDefault>
+                <span class="oi oi-plus" aria-hidden="true"></span> New Session
+            </a>
         </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="fetchdata">
-                <span class="oi oi-list-rich" aria-hidden="true"></span> Fetch data
-            </NavLink>
+
+        <!-- Separatore -->
+        <hr class="nav-separator" />
+
+        <!-- Open Sessions Section -->
+        <div class="nav-section">
+            <div class="nav-section-header" @onclick="() => ToggleSection(SectionType.Open)">
+                <span class="nav-section-icon">@(openExpanded ? "▼" : "▶")</span>
+                <span class="nav-section-title">Open Sessions (@openSessions.Count)</span>
+            </div>
+
+            @if (openExpanded)
+            {
+                <!-- Search box per Open Sessions -->
+                <div class="nav-search-container">
+                    <input type="text"
+                           class="nav-search-box"
+                           placeholder="Search open sessions..."
+                           @bind="openSearchTerm"
+                           @bind:event="oninput" />
+                </div>
+
+                <!-- Lista Open Sessions con Virtualize -->
+                <div class="nav-session-list">
+                    @if (FilteredOpenSessions.Any())
+                    {
+                        <Virtualize Items="@FilteredOpenSessions" Context="session">
+                            <a class="nav-session-item"
+                               href="#"
+                               @onclick="() => NavigateToSession(session.ClaudeSessionId ?? session.ConnectionId, session.SessionName, session.WorkingDirectory, true)"
+                               @onclick:preventDefault
+                               @oncontextmenu="(e) => ShowContextMenu(e, session.ClaudeSessionId ?? session.ConnectionId, session.SessionName, session.WorkingDirectory, true)"
+                               @oncontextmenu:preventDefault>
+                                <span class="session-status-dot open"></span>
+                                <span class="session-name">@(session.SessionName ?? "Unnamed")</span>
+                            </a>
+                        </Virtualize>
+                    }
+                    else
+                    {
+                        <div class="nav-empty-state">
+                            @(string.IsNullOrWhiteSpace(openSearchTerm) ? "No open sessions" : "No matches found")
+                        </div>
+                    }
+                </div>
+            }
         </div>
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="terminal-test">
-                <span class="oi oi-terminal" aria-hidden="true"></span> Terminal Test
-            </NavLink>
+
+        <!-- Closed Sessions Section -->
+        <div class="nav-section">
+            <div class="nav-section-header" @onclick="() => ToggleSection(SectionType.Closed)">
+                <span class="nav-section-icon">@(closedExpanded ? "▼" : "▶")</span>
+                <span class="nav-section-title">Closed Sessions (@closedSessions.Count)</span>
+            </div>
+
+            @if (closedExpanded)
+            {
+                <!-- Search box per Closed Sessions -->
+                <div class="nav-search-container">
+                    <input type="text"
+                           class="nav-search-box"
+                           placeholder="Search closed sessions..."
+                           @bind="closedSearchTerm"
+                           @bind:event="oninput" />
+                </div>
+
+                <!-- Lista Closed Sessions con Virtualize -->
+                <div class="nav-session-list">
+                    @if (FilteredClosedSessions.Any())
+                    {
+                        <Virtualize Items="@FilteredClosedSessions" Context="session">
+                            <div class="nav-session-item"
+                                 @oncontextmenu="(e) => ShowContextMenu(e, session.SessionId, session.Name, session.WorkingDirectory, false)"
+                                 @oncontextmenu:preventDefault>
+                                <span class="session-status-dot closed"></span>
+                                <span class="session-name">@(session.Name ?? "Unnamed")</span>
+                            </div>
+                        </Virtualize>
+                    }
+                    else
+                    {
+                        <div class="nav-empty-state">
+                            @(string.IsNullOrWhiteSpace(closedSearchTerm) ? "No closed sessions" : "No matches found")
+                        </div>
+                    }
+                </div>
+            }
         </div>
     </nav>
+
+    <!-- Context Menu -->
+    @if (_showContextMenu)
+    {
+        <div class="context-menu" style="left: @(_contextMenuX)px; top: @(_contextMenuY)px;" @onclick:stopPropagation>
+            @if (_contextMenuIsOpen)
+            {
+                <!-- Menu per Open Sessions -->
+                <div class="context-menu-item" @onclick="HandleCloseSession">
+                    🗙 Chiudi
+                </div>
+            }
+            else
+            {
+                <!-- Menu per Closed Sessions -->
+                <div class="context-menu-item" @onclick="HandleOpenSession">
+                    ▶️ Apri
+                </div>
+            }
+        </div>
+    }
 </div>
 
 @code {
-    private bool collapseNavMenu = true;
+    // Enumerazione per tipo sezione
+    private enum SectionType { Open, Closed }
 
+    // State per menu mobile
+    private bool collapseNavMenu = true;
     private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
 
+    // State per sessioni
+    private List<ActiveSessionInfo> openSessions = new();
+    private List<Session> closedSessions = new();
+
+    // State per sezioni collassabili
+    private bool openExpanded = true;
+    private bool closedExpanded = false;
+
+    // State per ricerca
+    private string openSearchTerm = "";
+    private string closedSearchTerm = "";
+
+    // State per menu contestuale
+    private bool _showContextMenu = false;
+    private string? _contextMenuSessionId = null;
+    private string? _contextMenuSessionName = null;
+    private string? _contextMenuWorkingDirectory = null;
+    private bool _contextMenuIsOpen = false; // true = Open Session, false = Closed Session
+    private double _contextMenuX = 0;
+    private double _contextMenuY = 0;
+
+    // Sessioni filtrate (computed properties)
+    private List<ActiveSessionInfo> FilteredOpenSessions =>
+        string.IsNullOrWhiteSpace(openSearchTerm)
+            ? openSessions
+            : openSessions.Where(s => (s.SessionName ?? "").Contains(openSearchTerm, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    private List<Session> FilteredClosedSessions =>
+        string.IsNullOrWhiteSpace(closedSearchTerm)
+            ? closedSessions
+            : closedSessions.Where(s => (s.Name ?? "").Contains(closedSearchTerm, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    // Flag per primo render
+    private bool _firstRender = true;
+
+    /// <summary>
+    /// OnInitializedAsync: carica le sessioni all'avvio del componente.
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        // Sottoscrivi eventi di sessione
+        SessionEvents.SessionListChanged += OnSessionListChanged;
+
+        // Carica sessioni subito (per mostrare lista iniziale)
+        await LoadSessions();
+    }
+
+    /// <summary>
+    /// Handler per evento SessionListChanged.
+    /// Ricarica le sessioni e aggiorna UI.
+    /// </summary>
+    private async void OnSessionListChanged(object? sender, EventArgs e)
+    {
+        await LoadSessions();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// OnAfterRenderAsync: ricarica sessioni dopo il primo render per catturare auto-launch di Index.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _firstRender)
+        {
+            _firstRender = false;
+            // Delay per permettere a Index.razor di completare auto-launch
+            await Task.Delay(1500);
+            await LoadSessions();
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Carica Open Sessions (da database) e Closed Sessions (da database).
+    /// IMPORTANTE: Open Sessions vengono caricate dal DB (status='open'), NON da TerminalManager.
+    /// Questo permette di mostrare tutte le sessioni aperte anche se il processo non è in memoria.
+    /// </summary>
+    private async Task LoadSessions()
+    {
+        try
+        {
+            await using var db = await DbContextFactory.CreateDbContextAsync();
+
+            // Carica Open Sessions dal database (status = 'open')
+            var dbOpenSessions = await db.Sessions
+                .AsNoTracking()
+                .Where(s => s.Status == "open" && !s.Excluded)
+                .OrderByDescending(s => s.LastActivity) // Ordina per LastActivity (più recente)
+                .ToListAsync();
+
+            // Converti a ActiveSessionInfo per compatibilità con UI
+            openSessions = dbOpenSessions.Select(s => new ActiveSessionInfo
+            {
+                ClaudeSessionId = s.SessionId,
+                SessionName = s.Name ?? "Unnamed",
+                WorkingDirectory = s.WorkingDirectory ?? "C:\\temp",
+                CreatedAt = s.CreatedAt,
+                // ConnectionId: controllare se processo in memoria
+                ConnectionId = TerminalManager.GetConnectionIdByClaudeSessionId(s.SessionId)
+            }).ToList();
+
+            // Carica Closed Sessions dal database (status = 'closed')
+            closedSessions = await db.Sessions
+                .AsNoTracking()
+                .Where(s => s.Status == "closed" && !s.Excluded) // Solo sessioni chiuse, escludi sessioni di sistema
+                .OrderByDescending(s => s.LastActivity) // Ordina per LastActivity (più recente)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            // Log error (opzionale)
+            Console.Error.WriteLine($"Error loading sessions: {ex.Message}");
+            openSessions = new List<ActiveSessionInfo>();
+            closedSessions = new List<Session>();
+        }
+    }
+
+    /// <summary>
+    /// Toggle visibilità sezione (Open/Closed).
+    /// </summary>
+    private void ToggleSection(SectionType section)
+    {
+        if (section == SectionType.Open)
+            openExpanded = !openExpanded;
+        else
+            closedExpanded = !closedExpanded;
+    }
+
+    /// <summary>
+    /// Toggle menu mobile.
+    /// </summary>
     private void ToggleNavMenu()
     {
         collapseNavMenu = !collapseNavMenu;
+    }
+
+    /// <summary>
+    /// Naviga alla sessione selezionata tramite query parameters.
+    /// </summary>
+    private void NavigateToSession(string? sessionId, string? sessionName, string? workingDirectory, bool isOpen)
+    {
+        if (string.IsNullOrEmpty(sessionId))
+            return;
+
+        var queryString = $"?sessionId={Uri.EscapeDataString(sessionId)}" +
+                          $"&sessionName={Uri.EscapeDataString(sessionName ?? "Unnamed")}" +
+                          $"&workingDir={Uri.EscapeDataString(workingDirectory ?? "C:\\temp")}" +
+                          $"&isOpen={isOpen}";
+
+        NavigationManager.NavigateTo(queryString);
+    }
+
+    /// <summary>
+    /// Apre il modal per creare una nuova sessione tramite JavaScript.
+    /// </summary>
+    private async Task OpenNewSessionModal()
+    {
+        await JSRuntime.InvokeVoidAsync("ClaudeTerminal.openModal", "newSessionModal");
+    }
+
+    /// <summary>
+    /// Mostra il menu contestuale per una sessione.
+    /// </summary>
+    private void ShowContextMenu(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, string sessionId, string? sessionName, string? workingDirectory, bool isOpen)
+    {
+        _contextMenuSessionId = sessionId;
+        _contextMenuSessionName = sessionName;
+        _contextMenuWorkingDirectory = workingDirectory;
+        _contextMenuIsOpen = isOpen;
+        _contextMenuX = e.ClientX;
+        _contextMenuY = e.ClientY;
+        _showContextMenu = true;
+    }
+
+    /// <summary>
+    /// Handler per aprire una Closed Session (tasto destro → Apri).
+    /// </summary>
+    private async Task HandleOpenSession()
+    {
+        _showContextMenu = false;
+
+        if (string.IsNullOrEmpty(_contextMenuSessionId))
+            return;
+
+        try
+        {
+            // Naviga a Index.razor per aprire la sessione con nome e working directory
+            NavigateToSession(_contextMenuSessionId, _contextMenuSessionName, _contextMenuWorkingDirectory, false);
+
+            // Refresh lista sessioni dopo breve delay (permette al DB di aggiornarsi)
+            await Task.Delay(500);
+            await LoadSessions();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error opening session: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Handler per chiudere una Open Session (tasto destro → Chiudi).
+    /// </summary>
+    private async Task HandleCloseSession()
+    {
+        _showContextMenu = false;
+
+        if (string.IsNullOrEmpty(_contextMenuSessionId))
+            return;
+
+        try
+        {
+            // Ottieni ConnectionId dal ClaudeSessionId
+            var connectionId = TerminalManager.GetConnectionIdByClaudeSessionId(_contextMenuSessionId);
+            if (connectionId != null)
+            {
+                // Invia comando "exit\r" per chiudere gracefully
+                await TerminalManager.SendExit(connectionId);
+
+                // Attendi che ProcessCompleted venga invocato e il DB venga aggiornato
+                await Task.Delay(1000); // Breve delay per permettere aggiornamento DB
+
+                // Refresh lista sessioni
+                await LoadSessions();
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error closing session: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Metodo pubblico per aggiornare le sessioni (chiamabile da Index.razor).
+    /// </summary>
+    public async Task RefreshSessions()
+    {
+        await LoadSessions();
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Dispose: rimuove sottoscrizione eventi.
+    /// </summary>
+    public void Dispose()
+    {
+        SessionEvents.SessionListChanged -= OnSessionListChanged;
     }
 }

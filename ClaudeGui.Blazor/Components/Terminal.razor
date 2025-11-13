@@ -22,9 +22,6 @@
                 <span class="working-dir">📁 @WorkingDirectory</span>
             }
         </span>
-        <button class="btn-close-terminal" @onclick="HandleCloseAsync" title="Chiudi terminal">
-            ✕
-        </button>
     </div>
     <div id="@TerminalElementId" class="terminal-container"></div>
 </div>
@@ -49,17 +46,17 @@
     public string WorkingDirectory { get; set; } = "C:\\";
 
     /// <summary>
-    /// Callback invocato quando l'utente chiude il terminal.
-    /// </summary>
-    [Parameter]
-    public EventCallback OnClose { get; set; }
-
-    /// <summary>
     /// Callback invocato quando la sessione è stata inizializzata con successo.
     /// Ritorna il SessionId creato/ripreso.
     /// </summary>
     [Parameter]
     public EventCallback<string> OnSessionInitialized { get; set; }
+
+    /// <summary>
+    /// Callback invocato quando il processo Claude termina.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnProcessCompleted { get; set; }
 
     /// <summary>
     /// ID univoco dell'elemento DOM per questo terminal.
@@ -97,6 +94,12 @@
         {
             try
             {
+                // Se resume (ExistingSessionId non null), imposta subito ClaudeSessionId
+                if (!string.IsNullOrEmpty(ExistingSessionId))
+                {
+                    ClaudeSessionId = ExistingSessionId;
+                }
+
                 // Genera ID univoco per l'elemento DOM del terminal
                 TerminalElementId = $"terminal-{Guid.NewGuid():N}";
                 StateHasChanged(); // Aggiorna DOM con nuovo ID
@@ -151,13 +154,17 @@
     }
 
     /// <summary>
-    /// Handler per chiusura terminal da UI.
+    /// Metodo chiamato da JavaScript quando il processo Claude termina.
     /// </summary>
-    private async Task HandleCloseAsync()
+    [JSInvokable]
+    public async Task OnProcessCompletedCallback()
     {
-        if (OnClose.HasDelegate)
+        Console.WriteLine($"[Terminal.razor] ⚠️ Process completed for ConnectionId: {ConnectionId}");
+
+        // Notifica il parent component (Index.razor)
+        if (OnProcessCompleted.HasDelegate)
         {
-            await OnClose.InvokeAsync();
+            await OnProcessCompleted.InvokeAsync();
         }
     }
 
