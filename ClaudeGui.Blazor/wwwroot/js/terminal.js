@@ -346,6 +346,7 @@ window.ClaudeTerminal = (function () {
             const tempId = elementId; // Usa elementId come chiave temporanea
             terminals.set(tempId, {
                 terminal: terminal,
+                fitAddon: fitAddon, // Salva fitAddon per resize
                 elementId: elementId,
                 sessionId: null, // Verrà aggiornato dopo
                 dotNetRef: dotNetRef // Riferimento per callback a Blazor
@@ -382,6 +383,30 @@ window.ClaudeTerminal = (function () {
                     .catch(err => console.error('[ClaudeTerminal] Error sending initial resize:', err));
             }, 200);
 
+            // 9. Listener per window resize con debouncing
+            let resizeTimeout;
+            const handleWindowResize = () => {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(() => {
+                    try {
+                        fitAddon.fit();
+                        console.log('[ClaudeTerminal] Window resized, terminal refitted to:', terminal.rows, 'x', terminal.cols);
+                    } catch (err) {
+                        console.error('[ClaudeTerminal] Error refitting on window resize:', err);
+                    }
+                }, 300); // Debounce 300ms
+            };
+
+            window.addEventListener('resize', handleWindowResize);
+
+            // Salva handler per cleanup
+            const updatedData = terminals.get(returnedConnectionId);
+            terminals.set(returnedConnectionId, {
+                ...updatedData,
+                resizeHandler: handleWindowResize,
+                resizeTimeout: resizeTimeout
+            });
+
             return returnedConnectionId;
 
         } catch (err) {
@@ -408,10 +433,19 @@ window.ClaudeTerminal = (function () {
             // 1. Termina sessione sul server
             await hubConnection.invoke('KillSession', sessionId);
 
-            // 2. Chiudi terminal xterm.js
+            // 2. Rimuovi listener resize e cancella timeout
+            if (terminalData.resizeHandler) {
+                window.removeEventListener('resize', terminalData.resizeHandler);
+                console.log('[ClaudeTerminal] Resize handler removed');
+            }
+            if (terminalData.resizeTimeout) {
+                clearTimeout(terminalData.resizeTimeout);
+            }
+
+            // 3. Chiudi terminal xterm.js
             terminalData.terminal.dispose();
 
-            // 3. Rimuovi dalla mappa
+            // 4. Rimuovi dalla mappa
             terminals.delete(sessionId);
 
             console.log('[ClaudeTerminal] Terminal disposed:', sessionId);
