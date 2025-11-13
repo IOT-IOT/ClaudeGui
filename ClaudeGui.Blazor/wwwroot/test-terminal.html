@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClaudeTerminal.js Test</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+        }
+        h1 {
+            color: #0dbc79;
+        }
+        #terminal-container {
+            margin-top: 20px;
+            border: 2px solid #0dbc79;
+            padding: 10px;
+            background-color: #1e1e1e;
+        }
+        .controls {
+            margin: 20px 0;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            background-color: #0dbc79;
+            color: #1e1e1e;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover {
+            background-color: #23d18b;
+        }
+        #status {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #2d2d2d;
+            border-left: 4px solid #0dbc79;
+        }
+        .error {
+            border-left-color: #cd3131 !important;
+            color: #f14c4c;
+        }
+        .success {
+            border-left-color: #0dbc79 !important;
+            color: #23d18b;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 ClaudeTerminal.js Test Page</h1>
+    <p>Questa pagina testa le funzionalità JavaScript del terminal senza backend.</p>
+
+    <div class="controls">
+        <button onclick="testApiExists()">✓ Test API Exists</button>
+        <button onclick="testInitWithoutHub()">⚠ Test Init (fallirà senza hub)</button>
+        <button onclick="clearStatus()">🗑 Clear Status</button>
+    </div>
+
+    <div id="status">
+        <strong>Status:</strong> Pronto per test
+    </div>
+
+    <div id="terminal-container"></div>
+
+    <!-- Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@8.0.0/dist/browser/signalr.min.js"></script>
+    <script src="js/terminal.js"></script>
+
+    <!-- Test Script -->
+    <script>
+        function updateStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = `<strong>Status:</strong> ${message}`;
+            statusDiv.className = type === 'error' ? 'error' : (type === 'success' ? 'success' : '');
+            console.log(`[Test] ${message}`);
+        }
+
+        function clearStatus() {
+            updateStatus('Pronto per test');
+        }
+
+        function testApiExists() {
+            try {
+                // Verifica che l'oggetto ClaudeTerminal esista
+                if (typeof window.ClaudeTerminal === 'undefined') {
+                    throw new Error('ClaudeTerminal non è definito nel window');
+                }
+
+                // Verifica metodi pubblici
+                const requiredMethods = ['init', 'dispose', 'getSessionInfo', 'getActiveSessions'];
+                const missingMethods = [];
+
+                requiredMethods.forEach(method => {
+                    if (typeof window.ClaudeTerminal[method] !== 'function') {
+                        missingMethods.push(method);
+                    }
+                });
+
+                if (missingMethods.length > 0) {
+                    throw new Error(`Metodi mancanti: ${missingMethods.join(', ')}`);
+                }
+
+                // Verifica xterm.js
+                if (typeof Terminal === 'undefined') {
+                    throw new Error('xterm.js non caricato correttamente');
+                }
+
+                // Verifica SignalR
+                if (typeof signalR === 'undefined') {
+                    throw new Error('SignalR non caricato correttamente');
+                }
+
+                updateStatus(`✅ Test PASSED: API completa, xterm.js OK, SignalR OK`, 'success');
+            } catch (err) {
+                updateStatus(`❌ Test FAILED: ${err.message}`, 'error');
+            }
+        }
+
+        async function testInitWithoutHub() {
+            try {
+                updateStatus('Tentativo init() senza hub (dovrebbe fallire)...');
+
+                // Questo fallirà perché non c'è un server ClaudeHub in ascolto
+                await window.ClaudeTerminal.init('terminal-container', null, 'C:\\Test');
+
+                updateStatus('⚠ Inaspettato: init() ha successo senza hub!', 'error');
+            } catch (err) {
+                // Questo è il comportamento atteso
+                updateStatus(`✅ Comportamento corretto: init() fallisce senza hub (${err.message})`, 'success');
+            }
+        }
+
+        // Auto-run test API all'avvio
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                updateStatus('Auto-testing API...');
+                testApiExists();
+            }, 500);
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,69 @@
+namespace ClaudeGui.Blazor.Services;
+
+/// <summary>
+/// Interfaccia per gestione dizionario sessioni attive.
+/// Permette dependency injection e unit testing con mock.
+/// </summary>
+public interface ITerminalManager
+{
+    /// <summary>
+    /// Crea una nuova sessione terminal e aspetta il Session ID reale di Claude.
+    /// </summary>
+    /// <param name="workingDirectory">Working directory per il processo Claude</param>
+    /// <param name="sessionId">SessionId esistente (null per nuova sessione)</param>
+    /// <param name="connectionId">SignalR Connection ID per il routing dei messaggi</param>
+    /// <param name="sessionName">Nome della sessione (opzionale, per nuove sessioni)</param>
+    /// <returns>Session ID reale di Claude (dopo parsing)</returns>
+    Task<string> CreateSession(string workingDirectory, string? sessionId, string connectionId, string? sessionName = null);
+
+    /// <summary>
+    /// Ottiene il ProcessManager per una sessione.
+    /// </summary>
+    /// <param name="sessionId">Session ID</param>
+    /// <returns>ProcessManager se trovato, altrimenti null</returns>
+    ClaudeProcessManager? GetSession(string sessionId);
+
+    /// <summary>
+    /// Invia input a una sessione terminal tramite ConnectionId.
+    /// </summary>
+    /// <param name="connectionId">SignalR Connection ID</param>
+    /// <param name="data">Dati da inviare al processo Claude</param>
+    Task SendInput(string connectionId, string data);
+
+    /// <summary>
+    /// Avvia il processo Claude per una sessione (lazy start).
+    /// </summary>
+    /// <param name="sessionId">Session ID</param>
+    void StartSession(string sessionId);
+
+    /// <summary>
+    /// Termina una sessione e rimuove dal dizionario.
+    /// </summary>
+    /// <param name="sessionId">Session ID</param>
+    void KillSession(string sessionId);
+
+    /// <summary>
+    /// Ottiene tutte le sessioni attive.
+    /// </summary>
+    /// <returns>Elenco degli ID di sessione attive</returns>
+    IEnumerable<string> GetActiveSessions();
+
+    /// <summary>
+    /// Conta sessioni attive.
+    /// </summary>
+    int ActiveSessionCount { get; }
+
+    /// <summary>
+    /// Verifica se una sessione esiste ed è attiva.
+    /// </summary>
+    /// <param name="sessionId">Session ID</param>
+    /// <returns>True se la sessione esiste</returns>
+    bool SessionExists(string sessionId);
+
+    /// <summary>
+    /// Verifica se una sessione è in esecuzione.
+    /// </summary>
+    /// <param name="sessionId">Session ID</param>
+    /// <returns>True se la sessione esiste ed è in esecuzione</returns>
+    bool IsSessionRunning(string sessionId);
+}

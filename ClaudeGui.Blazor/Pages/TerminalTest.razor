@@ -1,0 +1,101 @@
+@page "/terminal-test"
+@using ClaudeGui.Blazor.Components
+
+<PageTitle>Terminal Test</PageTitle>
+
+<div class="terminal-test-page">
+    <h1>🧪 Terminal Component Test</h1>
+
+    <div class="controls">
+        <div class="form-group">
+            <label for="workingDir">Working Directory:</label>
+            <input id="workingDir"
+                   type="text"
+                   class="form-control"
+                   @bind="_workingDirectory"
+                   placeholder="C:\Sources\ClaudeGui" />
+        </div>
+
+        <div class="form-group">
+            <label for="existingSessionId">Existing Session ID (opzionale):</label>
+            <input id="existingSessionId"
+                   type="text"
+                   class="form-control"
+                   @bind="_existingSessionId"
+                   placeholder="Lascia vuoto per nuova sessione" />
+        </div>
+
+        <div class="button-group">
+            @if (!_showTerminal)
+            {
+                <button class="btn btn-primary" @onclick="ShowTerminal">
+                    🚀 Avvia Terminal
+                </button>
+            }
+            else
+            {
+                <button class="btn btn-danger" @onclick="CloseTerminal">
+                    🗑️ Chiudi Terminal
+                </button>
+            }
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_statusMessage))
+    {
+        <div class="alert @_statusClass" role="alert">
+            @_statusMessage
+        </div>
+    }
+
+    @if (_showTerminal)
+    {
+        <div class="terminal-section">
+            <Terminal WorkingDirectory="@_workingDirectory"
+                     ExistingSessionId="@_existingSessionId"
+                     OnClose="CloseTerminal"
+                     OnSessionInitialized="HandleSessionInitialized" />
+        </div>
+    }
+</div>
+
+@code {
+    private string _workingDirectory = "C:\\Sources\\ClaudeGui";
+    private string? _existingSessionId = null;
+    private bool _showTerminal = false;
+    private string? _statusMessage = null;
+    private string _statusClass = "alert-info";
+    private string? _currentSessionId = null;
+
+    /// <summary>
+    /// Mostra il terminal component.
+    /// </summary>
+    private void ShowTerminal()
+    {
+        _showTerminal = true;
+        _statusMessage = "Inizializzazione terminal in corso...";
+        _statusClass = "alert-info";
+    }
+
+    /// <summary>
+    /// Chiude il terminal component.
+    /// </summary>
+    private void CloseTerminal()
+    {
+        _showTerminal = false;
+        _statusMessage = $"Terminal chiuso (SessionId: {_currentSessionId?.Substring(0, 8)})";
+        _statusClass = "alert-warning";
+        _currentSessionId = null;
+    }
+
+    /// <summary>
+    /// Handler chiamato quando la sessione terminal è stata inizializzata.
+    /// </summary>
+    private void HandleSessionInitialized(string sessionId)
+    {
+        _currentSessionId = sessionId;
+        _statusMessage = $"✅ Terminal inizializzato con successo! SessionId: {sessionId.Substring(0, 8)}";
+        _statusClass = "alert-success";
+        StateHasChanged();
+    }
+}

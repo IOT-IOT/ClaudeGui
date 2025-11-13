@@ -1,0 +1,190 @@
+@using Microsoft.JSInterop
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+<div class="terminal-wrapper">
+    <div class="terminal-header">
+        <span class="terminal-title">
+            <span class="terminal-icon">🖥️</span>
+            Claude Terminal
+        </span>
+        <span class="terminal-session-info">
+            @if (!string.IsNullOrEmpty(ClaudeSessionId))
+            {
+                <span class="session-id">Claude Session: @ClaudeSessionId</span>
+            }
+            else
+            {
+                <span class="session-id detecting">Claude Session: Detecting...</span>
+            }
+            @if (!string.IsNullOrEmpty(WorkingDirectory))
+            {
+                <span class="working-dir">📁 @WorkingDirectory</span>
+            }
+        </span>
+        <button class="btn-close-terminal" @onclick="HandleCloseAsync" title="Chiudi terminal">
+            ✕
+        </button>
+    </div>
+    <div id="@TerminalElementId" class="terminal-container"></div>
+</div>
+
+@code {
+    /// <summary>
+    /// Session ID esistente per riprendere una sessione (null per nuova sessione).
+    /// </summary>
+    [Parameter]
+    public string? ExistingSessionId { get; set; }
+
+    /// <summary>
+    /// Nome della sessione (obbligatorio per nuove sessioni).
+    /// </summary>
+    [Parameter]
+    public string? SessionName { get; set; }
+
+    /// <summary>
+    /// Working directory per Claude Code.
+    /// </summary>
+    [Parameter]
+    public string WorkingDirectory { get; set; } = "C:\\";
+
+    /// <summary>
+    /// Callback invocato quando l'utente chiude il terminal.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    /// <summary>
+    /// Callback invocato quando la sessione è stata inizializzata con successo.
+    /// Ritorna il SessionId creato/ripreso.
+    /// </summary>
+    [Parameter]
+    public EventCallback<string> OnSessionInitialized { get; set; }
+
+    /// <summary>
+    /// ID univoco dell'elemento DOM per questo terminal.
+    /// </summary>
+    private string TerminalElementId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Session ID di Claude (rilevato in background da /status output).
+    /// Opzionale - serve solo per mostrare nella UI e per --resume.
+    /// </summary>
+    private string? ClaudeSessionId { get; set; }
+
+    /// <summary>
+    /// ConnectionId di SignalR (usato per il routing dei messaggi).
+    /// Ritornato immediatamente da CreateSession.
+    /// </summary>
+    private string? ConnectionId { get; set; }
+
+    /// <summary>
+    /// Flag per tracciare se il componente è stato inizializzato.
+    /// </summary>
+    private bool _isInitialized = false;
+
+    /// <summary>
+    /// Riferimento .NET per permettere a JavaScript di chiamare metodi C#.
+    /// </summary>
+    private DotNetObjectReference<Terminal>? _dotNetRef;
+
+    /// <summary>
+    /// OnAfterRenderAsync: inizializza il terminal JavaScript dopo il primo render.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_isInitialized)
+        {
+            try
+            {
+                // Genera ID univoco per l'elemento DOM del terminal
+                TerminalElementId = $"terminal-{Guid.NewGuid():N}";
+                StateHasChanged(); // Aggiorna DOM con nuovo ID
+
+                // Attendi che il DOM sia pronto
+                await Task.Delay(100);
+
+                // Crea riferimento .NET per callback da JavaScript
+                _dotNetRef = DotNetObjectReference.Create(this);
+
+                // Inizializza terminal JavaScript - ritorna SUBITO il ConnectionId
+                // Il Session ID di Claude arriverà in background quando /status lo rileva
+                ConnectionId = await JSRuntime.InvokeAsync<string>(
+                    "ClaudeTerminal.init",
+                    TerminalElementId,
+                    ExistingSessionId,
+                    WorkingDirectory,
+                    SessionName,
+                    _dotNetRef // Passa riferimento per callback
+                );
+
+                _isInitialized = true;
+
+                // Notifica parent component con ConnectionId (subito)
+                if (OnSessionInitialized.HasDelegate)
+                {
+                    await OnSessionInitialized.InvokeAsync(ConnectionId);
+                }
+
+                Console.WriteLine($"[Terminal.razor] ✅ Terminal initialized with ConnectionId: {ConnectionId}");
+                Console.WriteLine($"[Terminal.razor] ℹ️ Claude Session ID will be detected in background");
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[Terminal.razor] Error during initialization: {ex.Message}");
+                // TODO: Show error to user in production
+            }
+        }
+    }
+
+    /// <summary>
+    /// Metodo chiamato da JavaScript quando il Session ID viene rilevato.
+    /// Aggiorna la UI con il Session ID di Claude.
+    /// </summary>
+    /// <param name="sessionId">Session ID di Claude (UUID)</param>
+    [JSInvokable]
+    public void OnSessionIdDetected(string sessionId)
+    {
+        Console.WriteLine($"[Terminal.razor] 🎯 Session ID detected: {sessionId}");
+        ClaudeSessionId = sessionId;
+        StateHasChanged(); // Forza aggiornamento UI
+    }
+
+    /// <summary>
+    /// Handler per chiusura terminal da UI.
+    /// </summary>
+    private async Task HandleCloseAsync()
+    {
+        if (OnClose.HasDelegate)
+        {
+            await OnClose.InvokeAsync();
+        }
+    }
+
+    /// <summary>
+    /// Cleanup: dispose terminal JavaScript e rimuove sessione.
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        if (_isInitialized && !string.IsNullOrEmpty(ConnectionId))
+        {
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("ClaudeTerminal.dispose", ConnectionId);
+                //Console.WriteLine($"[Terminal.razor] Disposed - ConnectionId: {ConnectionId}");
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException)
+            {
+                // ✅ Normale: circuito Blazor disconnesso (es. navigazione con window.location.href)
+                //Console.WriteLine($"[Terminal.razor] Circuit disconnected during dispose - ConnectionId: {ConnectionId}");
+            }
+            catch (Exception ex)
+            {
+                //Console.Error.WriteLine($"[Terminal.razor] Error during dispose: {ex.Message}");
+            }
+        }
+
+        // Rilascia riferimento .NET
+        _dotNetRef?.Dispose();
+    }
+}
