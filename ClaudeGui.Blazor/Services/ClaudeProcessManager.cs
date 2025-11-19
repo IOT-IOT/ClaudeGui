@@ -109,20 +109,10 @@ namespace ClaudeGui.Blazor.Services
             {
                 Log.Information("🚀 Starting Claude process via ConPTY...");
 
-                // TODO: Implementare elevazione amministratore quando runAsAdmin=true
-                // PROBLEMA TECNICO: ConPTY non è compatibile con UAC elevation diretta perché:
-                // - ConPTY richiede UseShellExecute=false per redirect stdin/stdout/stderr
-                // - UAC elevation richiede UseShellExecute=true con Verb="runas"
-                // POSSIBILI SOLUZIONI:
-                // 1. Named Pipes: Processo elevato che comunica via named pipes
-                // 2. RPC/Socket: Processo elevato separato con comunicazione via socket
-                // 3. Dual-process: UI non-elevata + backend elevato con IPC
-                // 4. Verificare se processo corrente è già elevato e documentare requisito
-                if (_runAsAdmin)
-                {
-                    Log.Warning("⚠️ runAsAdmin=true richiesto ma elevazione non ancora implementata (TODO)");
-                    // Per ora procede normalmente - l'implementazione vera richiede architettura più complessa
-                }
+                // Nota: L'applicazione ClaudeGui.Blazor è configurata per richiedere sempre privilegi amministratore
+                // tramite app.manifest (requestedExecutionLevel="requireAdministrator").
+                // Tutti i processi claude.exe lanciati ereditano automaticamente i privilegi admin.
+                // Il flag _runAsAdmin viene mantenuto per compatibilità ma non ha effetto pratico.
 
                 // Crea istanza Terminal
                 _terminal = new Terminal();
