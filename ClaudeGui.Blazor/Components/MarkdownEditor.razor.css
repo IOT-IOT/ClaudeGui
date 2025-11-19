@@ -119,7 +119,9 @@
     height: auto !important;
 }
 
-.markdown-editor-wrapper ::deep .editor-toolbar a {
+.markdown-editor-wrapper ::deep .editor-toolbar a,
+.markdown-editor-wrapper ::deep .editor-toolbar a.fa,
+.markdown-editor-wrapper ::deep .editor-toolbar button {
     color: #d7d7d7 !important;
     border: 1px solid transparent !important;
     flex-shrink: 0 !important;
@@ -135,6 +137,7 @@
     font-size: 14px !important;
     line-height: 28px !important;
     box-sizing: border-box !important;
+    overflow: hidden !important;
 }
 
 .markdown-editor-wrapper ::deep .editor-toolbar a:hover,

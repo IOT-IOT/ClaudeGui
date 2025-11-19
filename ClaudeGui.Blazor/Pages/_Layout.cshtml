@@ -18,6 +18,31 @@
     <!-- EasyMDE Markdown Editor CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde@2.18.0/dist/easymde.min.css" />
 
+    <!-- EasyMDE Custom Styles - Global override -->
+    <style>
+        /* Fix dimensioni uniformi toolbar - Override globale più forte di ::deep */
+        .editor-toolbar a,
+        .editor-toolbar button {
+            width: 28px !important;
+            height: 28px !important;
+            min-width: 28px !important;
+            max-width: 28px !important;
+            padding: 0 !important;
+            margin: 2px !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            box-sizing: border-box !important;
+            overflow: hidden !important;
+            flex-shrink: 0 !important;
+        }
+
+        .editor-toolbar {
+            padding: 4px 8px !important;
+            min-height: 38px !important;
+        }
+    </style>
+
     <component type="typeof(HeadOutlet)" render-mode="ServerPrerendered" />
 </head>
 <body>
