@@ -928,9 +928,8 @@ namespace ClaudeGui.Blazor.Services
         /// <param name="workingDirectory">Working directory della sessione</param>
         /// <param name="lastActivity">Data ultima attività (default NOW se non specificata)</param>
         /// <param name="status">Stato sessione: 'open' o 'closed' (default 'closed' per retrocompatibilità)</param>
-        /// <param name="runAsAdmin">Flag per indicare se la sessione è stata avviata come amministratore</param>
         /// <returns>True se la sessione è stata inserita, False se esisteva già</returns>
-        public async Task<bool> InsertSessionAsync(string sessionId, string? name, string workingDirectory, DateTime? lastActivity = null, string status = "closed", bool runAsAdmin = false)
+        public async Task<bool> InsertSessionAsync(string sessionId, string? name, string workingDirectory, DateTime? lastActivity = null, string status = "closed")
         {
             try
             {
@@ -951,8 +950,7 @@ namespace ClaudeGui.Blazor.Services
                     Name = string.IsNullOrWhiteSpace(name) ? null : name,
                     WorkingDirectory = workingDirectory,
                     Status = status,
-                    LastActivity = lastActivity ?? DateTime.Now,
-                    RunAsAdmin = runAsAdmin
+                    LastActivity = lastActivity ?? DateTime.Now
                 };
 
                 dbContext.Sessions.Add(session);
@@ -993,12 +991,6 @@ namespace ClaudeGui.Blazor.Services
 
                 session.Status = status;
                 session.LastActivity = DateTime.Now;
-
-                // Reset run_as_admin flag quando la sessione viene chiusa
-                if (status == "closed")
-                {
-                    session.RunAsAdmin = false;
-                }
 
                 await dbContext.SaveChangesAsync();
 

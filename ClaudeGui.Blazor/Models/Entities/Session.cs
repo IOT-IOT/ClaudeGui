@@ -81,12 +81,6 @@ public class Session
     public string? ExcludedReason { get; set; }
 
     /// <summary>
-    /// Flag per indicare se la sessione è stata avviata con privilegi amministratore
-    /// </summary>
-    [Column("run_as_admin")]
-    public bool RunAsAdmin { get; set; } = false;
-
-    /// <summary>
     /// Navigation property: messaggi associati a questa sessione
     /// </summary>
     public virtual ICollection<Message> Messages { get; set; } = new List<Message>();

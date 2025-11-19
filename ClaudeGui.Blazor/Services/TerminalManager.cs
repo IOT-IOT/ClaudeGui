@@ -134,8 +134,7 @@ public class TerminalManager : ITerminalManager
                     name: sessionName, // Nome fornito dall'utente al momento della creazione
                     workingDirectory: workingDirectory,
                     lastActivity: DateTime.Now,
-                    status: "open", // Sessione attiva (non "closed")
-                    runAsAdmin: sessionInfo.IsAdmin // Salva flag amministratore nel database
+                    status: "open" // Sessione attiva (non "closed")
                 );
 
                 if (inserted)
