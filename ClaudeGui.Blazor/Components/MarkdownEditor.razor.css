@@ -3,6 +3,7 @@
     display: flex;
     flex-direction: column;
     background: #1e1e1e;
+    overflow: hidden !important;
 }
 
 .editor-placeholder {
@@ -43,7 +44,7 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow: hidden !important;
     min-height: 0; /* Important for flex children */
 }
 
@@ -71,6 +72,7 @@
     display: flex;
     flex-direction: column;
     height: 100%;
+    overflow: hidden !important;
 }
 
 .markdown-editor-wrapper ::deep .CodeMirror {
@@ -82,8 +84,22 @@
     font-size: 14px !important;
 }
 
+/* Nascondi scrollbar ma mantieni funzionalità scroll */
 .markdown-editor-wrapper ::deep .CodeMirror-scroll {
     min-height: 400px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    scrollbar-width: none !important; /* Firefox */
+    -ms-overflow-style: none !important; /* IE/Edge */
+}
+
+.markdown-editor-wrapper ::deep .CodeMirror-scroll::-webkit-scrollbar {
+    display: none !important; /* Chrome/Safari */
+}
+
+.markdown-editor-wrapper ::deep .CodeMirror-vscrollbar,
+.markdown-editor-wrapper ::deep .CodeMirror-hscrollbar {
+    display: none !important;
 }
 
 .markdown-editor-wrapper ::deep .CodeMirror-cursor {
@@ -103,11 +119,11 @@
     opacity: 1 !important;
     display: flex !important;
     flex-wrap: nowrap !important;
-    overflow-x: visible !important;
-    white-space: nowrap !important;
-    padding: 4px 8px !important;
-    min-height: 38px !important;
+    padding: 2px 4px !important;
+    min-height: 30px !important;
+    max-height: 30px !important;
     height: auto !important;
+    overflow: hidden !important;
 }
 
 .markdown-editor-wrapper ::deep .editor-toolbar a,
@@ -119,14 +135,14 @@
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
-    width: 28px !important;
-    height: 28px !important;
-    min-width: 28px !important;
-    max-width: 28px !important;
+    width: 24px !important;
+    height: 24px !important;
+    min-width: 24px !important;
+    max-width: 24px !important;
     padding: 0 !important;
-    margin: 2px !important;
-    font-size: 14px !important;
-    line-height: 28px !important;
+    margin: 1px !important;
+    font-size: 12px !important;
+    line-height: 24px !important;
     box-sizing: border-box !important;
     overflow: hidden !important;
 }
@@ -139,22 +155,22 @@
 
 .markdown-editor-wrapper ::deep .editor-toolbar a i.fa {
     color: #d7d7d7 !important;
-    font-size: 14px !important;
-    line-height: 14px !important;
+    font-size: 12px !important;
+    line-height: 12px !important;
     width: auto !important;
     height: auto !important;
 }
 
 .markdown-editor-wrapper ::deep .editor-toolbar .fa {
-    font-size: 14px !important;
-    line-height: 14px !important;
+    font-size: 12px !important;
+    line-height: 12px !important;
 }
 
 /* Fix specifico per icona tabella e altre che potrebbero essere più grandi */
 .markdown-editor-wrapper ::deep .editor-toolbar .fa-table,
 .markdown-editor-wrapper ::deep .editor-toolbar .fa-picture-o,
 .markdown-editor-wrapper ::deep .editor-toolbar .fa-arrows-alt {
-    font-size: 13px !important;
+    font-size: 11px !important;
 }
 
 .markdown-editor-wrapper ::deep .editor-toolbar i.separator {

@@ -335,6 +335,7 @@
 .editor-panel {
     grid-column: 2; /* Seconda colonna */
     background-color: rgba(255, 255, 255, 0.03);
+    overflow: hidden !important;
 }
 
 .powershell-panel {

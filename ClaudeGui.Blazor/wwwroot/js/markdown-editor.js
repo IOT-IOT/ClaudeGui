@@ -20,15 +20,14 @@ window.MarkdownEditor = {
                 enabled: false  // Gestiamo autosave lato C#
             },
             toolbar: [
-                // Riga 1: Formattazione + Liste + Inserimenti
-                'bold', 'italic', 'heading', 'strikethrough', '|',
-                'quote', 'unordered-list', 'ordered-list', '|',
-                'link', 'image', 'table', 'code', 'horizontal-rule',
-                // Separator forzato per andare a capo (EasyMDE supporta "\n" ma usiamo '|' come divisore visivo)
-                '|',
-                // Riga 2: Visualizzazione + Azioni + Aiuto
+                // Riga 1: Formattazione + Liste + Inserimenti (15 elementi)
+                'bold', 'italic', 'heading', 'strikethrough', 'quote', '|',
+                'unordered-list', 'ordered-list', 'code', '|',
+                'link', 'image', 'table', 'horizontal-rule', '|',
+                // Riga 2: Visualizzazione + Azioni + Aiuto (13 elementi)
                 'preview', 'side-by-side', 'fullscreen', '|',
                 'undo', 'redo', '|',
+                'heading-smaller', 'heading-bigger', 'clean-block', '|',
                 'guide'
             ],
             renderingConfig: {
