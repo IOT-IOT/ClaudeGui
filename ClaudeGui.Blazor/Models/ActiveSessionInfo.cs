@@ -37,9 +37,4 @@ public class ActiveSessionInfo
     /// Timestamp di creazione della sessione.
     /// </summary>
     public DateTime CreatedAt { get; set; } = DateTime.Now;
-
-    /// <summary>
-    /// Indica se la sessione è stata avviata con privilegi amministratore.
-    /// </summary>
-    public bool IsAdmin { get; set; } = false;
 }

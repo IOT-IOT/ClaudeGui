@@ -37,7 +37,6 @@ namespace ClaudeGui.Blazor.Services
         private string? _sessionId; // Può essere passato al costruttore (resume) o rilevato da /status (nuova sessione)
         private readonly string _workingDirectory; // Working directory per il processo Claude
         private readonly bool _isNewSession; // Flag per determinare se inviare /status o no (false per resume)
-        private readonly bool _runAsAdmin; // Flag per indicare se il processo deve essere avviato con privilegi amministratore
 
         // Terminal dimensions (matching typical xterm.js defaults)
         private const int TERMINAL_ROWS = 24;
@@ -67,18 +66,16 @@ namespace ClaudeGui.Blazor.Services
         /// <param name="resumeSessionId">Optional session ID to resume</param>
         /// <param name="workingDirectory">Optional working directory for Claude process. If null, uses AppConfig default.</param>
         /// <param name="isNewSession">True se nuova sessione (invia /status), False se resume (Session ID già noto)</param>
-        /// <param name="runAsAdmin">True per eseguire il processo claude.exe con privilegi amministratore (UAC)</param>
-        public ClaudeProcessManager(string? resumeSessionId = null, string? workingDirectory = null, bool isNewSession = true, bool runAsAdmin = false)
+        public ClaudeProcessManager(string? resumeSessionId = null, string? workingDirectory = null, bool isNewSession = true)
         {
             _sessionId = resumeSessionId;
             _workingDirectory = workingDirectory ?? AppConfig.ClaudeWorkingDirectory;
             _isNewSession = isNewSession;
-            _runAsAdmin = runAsAdmin;
             _isRunning = false;
             _wasKilled = false;
 
-            Log.Information("ClaudeProcessManager created with working directory: {WorkingDir}, isNewSession: {IsNewSession}, runAsAdmin: {RunAsAdmin}",
-                _workingDirectory, _isNewSession, _runAsAdmin);
+            Log.Information("ClaudeProcessManager created with working directory: {WorkingDir}, isNewSession: {IsNewSession}",
+                _workingDirectory, _isNewSession);
         }
 
         /// <summary>

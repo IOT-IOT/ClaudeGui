@@ -26,9 +26,8 @@ public class ClaudeHub : Hub
     /// <param name="existingSessionId">SessionId esistente per resume (opzionale)</param>
     /// <param name="sessionName">Nome della sessione (opzionale, per nuove sessioni)</param>
     /// <param name="customConnectionId">ID univoco generato lato client per identificare questo terminal (opzionale)</param>
-    /// <param name="runAsAdmin">True per eseguire il processo claude.exe con privilegi amministratore (UAC)</param>
     /// <returns>Connection ID univoco per questo terminal</returns>
-    public async Task<string> CreateSession(string workingDirectory, string? existingSessionId = null, string? sessionName = null, string? customConnectionId = null, bool runAsAdmin = false)
+    public async Task<string> CreateSession(string workingDirectory, string? existingSessionId = null, string? sessionName = null, string? customConnectionId = null)
     {
         // Usa customConnectionId se fornito, altrimenti fallback a Context.ConnectionId
         // ⚠️ IMPORTANTE: Context.ConnectionId è lo stesso per tutti i component in Blazor Server!
@@ -43,7 +42,7 @@ public class ClaudeHub : Hub
 
         // Crea sessione - ASPETTA il Session ID reale di Claude
         // TerminalManager gestisce la registrazione degli event handlers
-        var realSessionId = await _terminalManager.CreateSession(workingDirectory, existingSessionId, connectionId, sessionName, runAsAdmin);
+        var realSessionId = await _terminalManager.CreateSession(workingDirectory, existingSessionId, connectionId, sessionName);
 
         _logger.Information("✅ Session {SessionId} created successfully (Name: {Name}, ConnectionId: {ConnectionId})",
             realSessionId, sessionName ?? "unnamed", connectionId);

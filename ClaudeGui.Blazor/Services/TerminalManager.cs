@@ -32,9 +32,8 @@ public class TerminalManager : ITerminalManager
     /// <param name="sessionId">SessionId di Claude esistente per resume (null per nuova sessione)</param>
     /// <param name="connectionId">SignalR Connection ID per il routing dei messaggi</param>
     /// <param name="sessionName">Nome della sessione (opzionale, per nuove sessioni)</param>
-    /// <param name="runAsAdmin">True per eseguire il processo claude.exe con privilegi amministratore (UAC)</param>
     /// <returns>ConnectionId per il routing SignalR (ritorna immediatamente)</returns>
-    public Task<string> CreateSession(string workingDirectory, string? sessionId, string connectionId, string? sessionName = null, bool runAsAdmin = false)
+    public Task<string> CreateSession(string workingDirectory, string? sessionId, string connectionId, string? sessionName = null)
     {
         // isNewSession=true se sessionId è null (nuova sessione), altrimenti false (resume)
         bool isNewSession = string.IsNullOrEmpty(sessionId);
@@ -42,8 +41,7 @@ public class TerminalManager : ITerminalManager
         var processManager = new ClaudeProcessManager(
             resumeSessionId: sessionId,
             workingDirectory: workingDirectory,
-            isNewSession: isNewSession,
-            runAsAdmin: runAsAdmin // Passa flag amministratore al process manager
+            isNewSession: isNewSession
         );
 
         // Crea ActiveSessionInfo con metadata
@@ -54,8 +52,7 @@ public class TerminalManager : ITerminalManager
             ProcessManager = processManager,
             SessionName = sessionName,
             WorkingDirectory = workingDirectory,
-            CreatedAt = DateTime.Now,
-            IsAdmin = runAsAdmin // Flag per indicare se la sessione è stata avviata come amministratore
+            CreatedAt = DateTime.Now
         };
 
         // Usa sempre connectionId come chiave nel dictionary
