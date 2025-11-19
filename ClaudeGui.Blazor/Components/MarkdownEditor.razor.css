@@ -53,19 +53,10 @@
     font-size: 0.9rem;
 }
 
-.btn-save {
-    background: #f39c12;
-    color: white;
-    border: none;
-    padding: 0.4rem 0.8rem;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.85rem;
-    transition: background 0.2s ease;
-}
-
-.btn-save:hover {
-    background: #e67e22;
+.autosave-indicator {
+    font-size: 0.75rem;
+    color: #0dbc79;
+    font-weight: 500;
 }
 
 .editor-textarea {

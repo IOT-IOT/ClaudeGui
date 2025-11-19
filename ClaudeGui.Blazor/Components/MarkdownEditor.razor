@@ -13,7 +13,7 @@
     {
         <div class="editor-header">
             <span class="editor-title">📝 Session Notes - @SessionId</span>
-            <button @onclick="ManualSave" class="btn-save">💾 Save</button>
+            <span class="autosave-indicator">✓ Autosave attivo (2s)</span>
         </div>
         <div class="editor-content">
             <textarea id="easymde-editor-@ElementId" class="editor-textarea"></textarea>
@@ -144,11 +144,6 @@
         {
             Console.Error.WriteLine($"Error saving markdown: {ex.Message}");
         }
-    }
-
-    private async Task ManualSave()
-    {
-        await SaveContent();
     }
 
     async ValueTask IAsyncDisposable.DisposeAsync()
