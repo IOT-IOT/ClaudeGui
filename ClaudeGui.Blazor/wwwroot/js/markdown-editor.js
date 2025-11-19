@@ -21,10 +21,9 @@ window.MarkdownEditor = {
             },
             toolbar: [
                 'bold', 'italic', 'heading', '|',
-                'quote', 'unordered-list', 'ordered-list', '|',
-                'link', 'code', 'table', '|',
-                'preview', 'side-by-side', '|',
-                'undo', 'redo'
+                'unordered-list', 'ordered-list', '|',
+                'link', 'code', '|',
+                'preview', 'guide'
             ],
             renderingConfig: {
                 singleLineBreaks: false,

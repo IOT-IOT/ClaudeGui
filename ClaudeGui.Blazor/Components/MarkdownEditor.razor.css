@@ -110,11 +110,17 @@
     border-top: 1px solid #3c3c3c !important;
     border-bottom: 1px solid #3c3c3c !important;
     opacity: 1 !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    white-space: nowrap !important;
 }
 
 .markdown-editor-wrapper ::deep .editor-toolbar a {
     color: #d7d7d7 !important;
     border: 1px solid transparent !important;
+    flex-shrink: 0 !important;
+    display: inline-block !important;
 }
 
 .markdown-editor-wrapper ::deep .editor-toolbar a:hover,
