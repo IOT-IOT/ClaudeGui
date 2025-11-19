@@ -29,7 +29,7 @@
     100% { transform: rotate(360deg); }
 }
 
-.editor-toolbar {
+.editor-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -37,6 +37,14 @@
     background: #2d2d2d;
     border-bottom: 1px solid #3c3c3c;
     flex-shrink: 0;
+}
+
+.editor-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0; /* Important for flex children */
 }
 
 .editor-title {
@@ -61,7 +69,9 @@
 }
 
 .editor-textarea {
-    display: none; /* EasyMDE lo trasforma in editor visuale */
+    width: 100%;
+    min-height: 500px;
+    flex: 1;
 }
 
 /* Override EasyMDE styles per dark theme */
@@ -73,11 +83,20 @@
 }
 
 .markdown-editor-wrapper ::deep .CodeMirror {
-    background: #1e1e1e;
-    color: #d7d7d7;
-    border: none;
-    height: auto;
-    flex: 1;
+    background: #1e1e1e !important;
+    color: #d7d7d7 !important;
+    border: none !important;
+    height: 100% !important;
+    font-family: 'Consolas', 'Courier New', monospace !important;
+    font-size: 14px !important;
+}
+
+.markdown-editor-wrapper ::deep .CodeMirror-scroll {
+    min-height: 400px !important;
+}
+
+.markdown-editor-wrapper ::deep .CodeMirror-cursor {
+    border-left: 1px solid #d7d7d7 !important;
 }
 
 .markdown-editor-wrapper ::deep .CodeMirror-gutters {
@@ -85,19 +104,27 @@
     border-right: 1px solid #3c3c3c;
 }
 
+/* EasyMDE toolbar styling */
 .markdown-editor-wrapper ::deep .editor-toolbar {
-    background: #2d2d2d;
-    border-top: 1px solid #3c3c3c;
-    border-bottom: 1px solid #3c3c3c;
+    background: #2d2d2d !important;
+    border-top: 1px solid #3c3c3c !important;
+    border-bottom: 1px solid #3c3c3c !important;
+    opacity: 1 !important;
 }
 
 .markdown-editor-wrapper ::deep .editor-toolbar a {
     color: #d7d7d7 !important;
 }
 
-.markdown-editor-wrapper ::deep .editor-toolbar a:hover {
-    background: #3c3c3c;
-    border-color: #555;
+.markdown-editor-wrapper ::deep .editor-toolbar a:hover,
+.markdown-editor-wrapper ::deep .editor-toolbar a.active {
+    background: #3c3c3c !important;
+    border-color: #555 !important;
+}
+
+.markdown-editor-wrapper ::deep .editor-toolbar i.separator {
+    border-left: 1px solid #3c3c3c !important;
+    border-right: 1px solid #3c3c3c !important;
 }
 
 .markdown-editor-wrapper ::deep .editor-preview {
