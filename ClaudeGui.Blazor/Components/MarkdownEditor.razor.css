@@ -114,6 +114,7 @@
 
 .markdown-editor-wrapper ::deep .editor-toolbar a {
     color: #d7d7d7 !important;
+    border: 1px solid transparent !important;
 }
 
 .markdown-editor-wrapper ::deep .editor-toolbar a:hover,
@@ -122,9 +123,21 @@
     border-color: #555 !important;
 }
 
+.markdown-editor-wrapper ::deep .editor-toolbar a i.fa {
+    color: #d7d7d7 !important;
+}
+
 .markdown-editor-wrapper ::deep .editor-toolbar i.separator {
     border-left: 1px solid #3c3c3c !important;
     border-right: 1px solid #3c3c3c !important;
+}
+
+.markdown-editor-wrapper ::deep .editor-toolbar button {
+    color: #d7d7d7 !important;
+}
+
+.markdown-editor-wrapper ::deep .editor-toolbar button:hover {
+    background: #3c3c3c !important;
 }
 
 .markdown-editor-wrapper ::deep .editor-preview {

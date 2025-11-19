@@ -15,7 +15,7 @@ window.MarkdownEditor = {
             element: element,
             initialValue: initialContent || "",
             spellChecker: false,
-            autoDownloadFontAwesome: false,
+            autoDownloadFontAwesome: true,  // Abilita Font Awesome per icone toolbar
             autosave: {
                 enabled: false  // Gestiamo autosave lato C#
             },
