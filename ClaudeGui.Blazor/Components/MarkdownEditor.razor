@@ -12,10 +12,10 @@
     else
     {
         <div class="editor-toolbar">
-            <span class="editor-title">📝 Session Notes - @SessionId?.Substring(0, 8)</span>
+            <span class="editor-title">📝 Session Notes - @SessionId</span>
             <button @onclick="ManualSave" class="btn-save">💾 Save</button>
         </div>
-        <div id="easymde-editor-@ElementId"></div>
+        <div id="easymde-editor-@ElementId" class="editor-container"></div>
     }
 </div>
 
@@ -35,12 +35,13 @@
     private string ElementId = Guid.NewGuid().ToString();
     private DotNetObjectReference<MarkdownEditor>? _dotNetRef;
     private bool _isReady = false;
+    private bool _editorInitialized = false;
     private System.Threading.Timer? _autoSaveTimer;
     private string _currentContent = "";
 
     protected override async Task OnParametersSetAsync()
     {
-        if (!string.IsNullOrEmpty(SessionId))
+        if (!string.IsNullOrEmpty(SessionId) && !_isReady)
         {
             // Resume: SessionId già noto, carica file subito
             await InitializeEditor();
@@ -50,15 +51,30 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && _isReady)
+        if (firstRender)
         {
             _dotNetRef = DotNetObjectReference.Create(this);
-            await JSRuntime.InvokeVoidAsync(
-                "MarkdownEditor.initialize",
-                $"easymde-editor-{ElementId}",
-                _dotNetRef,
-                _currentContent
-            );
+        }
+
+        // Inizializza EasyMDE quando editor diventa ready (anche dopo firstRender)
+        if (_isReady && !_editorInitialized && _dotNetRef != null)
+        {
+            _editorInitialized = true;
+
+            try
+            {
+                await JSRuntime.InvokeVoidAsync(
+                    "MarkdownEditor.initialize",
+                    $"easymde-editor-{ElementId}",
+                    _dotNetRef,
+                    _currentContent
+                );
+                Console.WriteLine($"[MarkdownEditor] EasyMDE initialized for session {SessionId}");
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[MarkdownEditor] Error initializing EasyMDE: {ex.Message}");
+            }
         }
     }
 

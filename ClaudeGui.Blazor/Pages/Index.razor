@@ -47,7 +47,7 @@
 
                 <!-- Right Panel: PowerShell Terminal -->
                 <div class="panel powershell-panel">
-                    @if (!string.IsNullOrEmpty(terminal.DetectedClaudeSessionId) && terminal.PowerShellConnectionId == null)
+                    @if (!string.IsNullOrEmpty(terminal.DetectedClaudeSessionId))
                     {
                         <Terminal @key="@($"{terminal.Key}-powershell")"
                                  Type="TerminalType.PowerShell"
@@ -56,7 +56,7 @@
                                  OnSessionInitialized="(connectionId) => HandlePowerShellSessionInitialized(terminal.Key, connectionId)"
                                  OnProcessCompleted="() => {}" />
                     }
-                    else if (string.IsNullOrEmpty(terminal.DetectedClaudeSessionId))
+                    else
                     {
                         <div class="powershell-placeholder">
                             <div class="spinner"></div>
