@@ -196,6 +196,13 @@
     white-space: nowrap;
 }
 
+/* Admin Icon */
+.admin-icon {
+    font-size: 0.75rem;
+    color: #dc3545;
+    flex-shrink: 0;
+}
+
 /* ============================================
    Session Status Dot
    ============================================ */
@@ -215,6 +222,11 @@
     background-color: #858585;
 }
 
+.session-status-dot.admin {
+    background-color: #dc3545;
+    animation: pulse-dot-red 2s infinite ease-in-out;
+}
+
 /* Pulse Animation for Open Sessions */
 @keyframes pulse-dot {
     0%, 100% {
@@ -224,6 +236,18 @@
     50% {
         opacity: 0.7;
         box-shadow: 0 0 0 4px rgba(13, 188, 121, 0);
+    }
+}
+
+/* Pulse Animation for Admin Sessions */
+@keyframes pulse-dot-red {
+    0%, 100% {
+        opacity: 1;
+        box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);
+    }
+    50% {
+        opacity: 0.7;
+        box-shadow: 0 0 0 4px rgba(220, 53, 69, 0);
     }
 }
 

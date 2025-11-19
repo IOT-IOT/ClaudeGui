@@ -30,6 +30,7 @@
                          WorkingDirectory="@terminal.WorkingDirectory"
                          ExistingSessionId="@terminal.SessionId"
                          SessionName="@terminal.SessionName"
+                         RunAsAdmin="@terminal.RunAsAdmin"
                          OnSessionInitialized="(connectionId) => HandleSessionInitialized(terminal.Key, connectionId)"
                          OnProcessCompleted="() => HandleProcessCompleted(terminal.Key)" />
             </div>
@@ -62,6 +63,9 @@
     [SupplyParameterFromQuery(Name = "isOpen")]
     public bool QueryIsOpen { get; set; }
 
+    [SupplyParameterFromQuery(Name = "runAsAdmin")]
+    public bool QueryRunAsAdmin { get; set; }
+
     // State - Multi-terminal support
     private List<TerminalInstance> _openTerminals = new();
     private string? _activeTerminalKey = null; // Chiave del terminal attualmente visualizzato
@@ -79,6 +83,7 @@
         public string? SessionId { get; set; } // Claude Session UUID
         public string? SessionName { get; set; }
         public string WorkingDirectory { get; set; } = "C:\\temp";
+        public bool RunAsAdmin { get; set; } = false; // Flag per eseguire come amministratore
     }
 
     /// <summary>
@@ -98,7 +103,7 @@
                 if (lastSession != null)
                 {
                     _hasAutoLaunched = true;
-                    ResumeSession(lastSession.SessionId, lastSession.Name, lastSession.WorkingDirectory);
+                    ResumeSession(lastSession.SessionId, lastSession.Name, lastSession.WorkingDirectory, lastSession.RunAsAdmin);
                     SetStatus($"Auto-launched last session: {lastSession.Name ?? lastSession.SessionId.Substring(0, 8)}", "info");
                 }
             }
@@ -119,7 +124,7 @@
         if (!string.IsNullOrEmpty(QuerySessionId) && !string.IsNullOrEmpty(QueryWorkingDir))
         {
             // Resume/attach alla sessione selezionata
-            ResumeSession(QuerySessionId, QuerySessionName, QueryWorkingDir);
+            ResumeSession(QuerySessionId, QuerySessionName, QueryWorkingDir, QueryRunAsAdmin);
         }
     }
 
@@ -149,7 +154,7 @@
     /// Se terminal già aperto in UI → solo switch visualizzazione (NO modifica DB).
     /// Altrimenti crea nuovo terminal con --resume.
     /// </summary>
-    private void ResumeSession(string sessionId, string? sessionName, string? workingDirectory = null)
+    private void ResumeSession(string sessionId, string? sessionName, string? workingDirectory = null, bool runAsAdmin = false)
     {
         // CASO 1: Terminal già aperto in UI → solo switch visualizzazione
         var existingTerminal = _openTerminals.FirstOrDefault(t =>
@@ -175,7 +180,8 @@
                     SessionId = sessionId,
                     SessionName = sessionName,
                     WorkingDirectory = workingDirectory ?? "C:\\temp",
-                    ConnectionId = connectionId
+                    ConnectionId = connectionId,
+                    RunAsAdmin = runAsAdmin
                 };
                 _openTerminals.Add(newTerminal);
                 _activeTerminalKey = newTerminal.Key;
@@ -189,7 +195,8 @@
         {
             SessionId = sessionId,
             SessionName = sessionName,
-            WorkingDirectory = workingDirectory ?? "C:\\temp"
+            WorkingDirectory = workingDirectory ?? "C:\\temp",
+            RunAsAdmin = runAsAdmin
         };
         _openTerminals.Add(resumeTerminal);
         _activeTerminalKey = resumeTerminal.Key;

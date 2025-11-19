@@ -46,6 +46,12 @@
     public string WorkingDirectory { get; set; } = "C:\\";
 
     /// <summary>
+    /// True per eseguire il processo claude.exe con privilegi amministratore (UAC).
+    /// </summary>
+    [Parameter]
+    public bool RunAsAdmin { get; set; } = false;
+
+    /// <summary>
     /// Callback invocato quando la sessione è stata inizializzata con successo.
     /// Ritorna il SessionId creato/ripreso.
     /// </summary>
@@ -118,7 +124,8 @@
                     ExistingSessionId,
                     WorkingDirectory,
                     SessionName,
-                    _dotNetRef // Passa riferimento per callback
+                    _dotNetRef, // Passa riferimento per callback
+                    RunAsAdmin // Flag per eseguire come amministratore
                 );
 
                 _isInitialized = true;

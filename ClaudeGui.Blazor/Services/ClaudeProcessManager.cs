@@ -37,6 +37,7 @@ namespace ClaudeGui.Blazor.Services
         private string? _sessionId; // Può essere passato al costruttore (resume) o rilevato da /status (nuova sessione)
         private readonly string _workingDirectory; // Working directory per il processo Claude
         private readonly bool _isNewSession; // Flag per determinare se inviare /status o no (false per resume)
+        private readonly bool _runAsAdmin; // Flag per indicare se il processo deve essere avviato con privilegi amministratore
 
         // Terminal dimensions (matching typical xterm.js defaults)
         private const int TERMINAL_ROWS = 24;
@@ -66,15 +67,18 @@ namespace ClaudeGui.Blazor.Services
         /// <param name="resumeSessionId">Optional session ID to resume</param>
         /// <param name="workingDirectory">Optional working directory for Claude process. If null, uses AppConfig default.</param>
         /// <param name="isNewSession">True se nuova sessione (invia /status), False se resume (Session ID già noto)</param>
-        public ClaudeProcessManager(string? resumeSessionId = null, string? workingDirectory = null, bool isNewSession = true)
+        /// <param name="runAsAdmin">True per eseguire il processo claude.exe con privilegi amministratore (UAC)</param>
+        public ClaudeProcessManager(string? resumeSessionId = null, string? workingDirectory = null, bool isNewSession = true, bool runAsAdmin = false)
         {
             _sessionId = resumeSessionId;
             _workingDirectory = workingDirectory ?? AppConfig.ClaudeWorkingDirectory;
             _isNewSession = isNewSession;
+            _runAsAdmin = runAsAdmin;
             _isRunning = false;
             _wasKilled = false;
 
-            Log.Information("ClaudeProcessManager created with working directory: {WorkingDir}, isNewSession: {IsNewSession}", _workingDirectory, _isNewSession);
+            Log.Information("ClaudeProcessManager created with working directory: {WorkingDir}, isNewSession: {IsNewSession}, runAsAdmin: {RunAsAdmin}",
+                _workingDirectory, _isNewSession, _runAsAdmin);
         }
 
         /// <summary>
@@ -104,6 +108,21 @@ namespace ClaudeGui.Blazor.Services
             try
             {
                 Log.Information("🚀 Starting Claude process via ConPTY...");
+
+                // TODO: Implementare elevazione amministratore quando runAsAdmin=true
+                // PROBLEMA TECNICO: ConPTY non è compatibile con UAC elevation diretta perché:
+                // - ConPTY richiede UseShellExecute=false per redirect stdin/stdout/stderr
+                // - UAC elevation richiede UseShellExecute=true con Verb="runas"
+                // POSSIBILI SOLUZIONI:
+                // 1. Named Pipes: Processo elevato che comunica via named pipes
+                // 2. RPC/Socket: Processo elevato separato con comunicazione via socket
+                // 3. Dual-process: UI non-elevata + backend elevato con IPC
+                // 4. Verificare se processo corrente è già elevato e documentare requisito
+                if (_runAsAdmin)
+                {
+                    Log.Warning("⚠️ runAsAdmin=true richiesto ma elevazione non ancora implementata (TODO)");
+                    // Per ora procede normalmente - l'implementazione vera richiede architettura più complessa
+                }
 
                 // Crea istanza Terminal
                 _terminal = new Terminal();

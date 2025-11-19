@@ -257,10 +257,11 @@ window.ClaudeTerminal = (function () {
      * @param {string} workingDirectory - Working directory per Claude
      * @param {string} sessionName - Nome della sessione (opzionale, per nuove sessioni)
      * @param {object} dotNetRef - Riferimento .NET per callback a Blazor
+     * @param {boolean} runAsAdmin - True per eseguire claude.exe con privilegi amministratore (UAC)
      * @returns {Promise<string>} - Session ID creato/riutilizzato
      */
-    async function init(elementId, sessionId, workingDirectory, sessionName, dotNetRef) {
-        console.log('[ClaudeTerminal] init() called:', { elementId, sessionId, workingDirectory, sessionName, hasDotNetRef: !!dotNetRef });
+    async function init(elementId, sessionId, workingDirectory, sessionName, dotNetRef, runAsAdmin = false) {
+        console.log('[ClaudeTerminal] init() called:', { elementId, sessionId, workingDirectory, sessionName, hasDotNetRef: !!dotNetRef, runAsAdmin });
 
         try {
             // 1. Inizializza SignalR se necessario
@@ -355,8 +356,8 @@ window.ClaudeTerminal = (function () {
 
             // 5. Chiama CreateSession con connectionId univoco
             // Durante l'attesa, il terminal riceve già output tramite handleOutputReceived
-            console.log('[ClaudeTerminal] Calling CreateSession with unique connectionId:', uniqueConnectionId);
-            const returnedConnectionId = await hubConnection.invoke('CreateSession', workingDirectory, sessionId, sessionName, uniqueConnectionId);
+            console.log('[ClaudeTerminal] Calling CreateSession with unique connectionId:', uniqueConnectionId, 'runAsAdmin:', runAsAdmin);
+            const returnedConnectionId = await hubConnection.invoke('CreateSession', workingDirectory, sessionId, sessionName, uniqueConnectionId, runAsAdmin);
             console.log('[ClaudeTerminal] ✅ CreateSession returned connectionId:', returnedConnectionId);
 
             // 6. Aggiorna mappa con ConnectionId reale

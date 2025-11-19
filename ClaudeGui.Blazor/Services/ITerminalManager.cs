@@ -13,8 +13,9 @@ public interface ITerminalManager
     /// <param name="sessionId">SessionId esistente (null per nuova sessione)</param>
     /// <param name="connectionId">SignalR Connection ID per il routing dei messaggi</param>
     /// <param name="sessionName">Nome della sessione (opzionale, per nuove sessioni)</param>
+    /// <param name="runAsAdmin">True per eseguire il processo claude.exe con privilegi amministratore (UAC)</param>
     /// <returns>Session ID reale di Claude (dopo parsing)</returns>
-    Task<string> CreateSession(string workingDirectory, string? sessionId, string connectionId, string? sessionName = null);
+    Task<string> CreateSession(string workingDirectory, string? sessionId, string connectionId, string? sessionName = null, bool runAsAdmin = false);
 
     /// <summary>
     /// Ottiene il ProcessManager per una sessione.

@@ -61,11 +61,15 @@
                         <Virtualize Items="@FilteredOpenSessions" Context="session">
                             <a class="nav-session-item"
                                href="#"
-                               @onclick="() => NavigateToSession(session.ClaudeSessionId ?? session.ConnectionId, session.SessionName, session.WorkingDirectory, true)"
+                               @onclick="() => NavigateToSession(session.ClaudeSessionId ?? session.ConnectionId, session.SessionName, session.WorkingDirectory, true, session.IsAdmin)"
                                @onclick:preventDefault
-                               @oncontextmenu="(e) => ShowContextMenu(e, session.ClaudeSessionId ?? session.ConnectionId, session.SessionName, session.WorkingDirectory, true)"
+                               @oncontextmenu="(e) => ShowContextMenu(e, session.ClaudeSessionId ?? session.ConnectionId, session.SessionName, session.WorkingDirectory, true, session.IsAdmin)"
                                @oncontextmenu:preventDefault>
-                                <span class="session-status-dot open"></span>
+                                <span class="session-status-dot @(session.IsAdmin ? "admin" : "open")"></span>
+                                @if (session.IsAdmin)
+                                {
+                                    <span class="admin-icon">🔒</span>
+                                }
                                 <span class="session-name">@(session.SessionName ?? "Unnamed")</span>
                             </a>
                         </Virtualize>
@@ -139,6 +143,9 @@
                 <div class="context-menu-item" @onclick="HandleOpenSession">
                     ▶️ Apri
                 </div>
+                <div class="context-menu-item" @onclick="HandleOpenSessionAsAdmin">
+                    🔒 Apri come amministratore
+                </div>
             }
         </div>
     }
@@ -170,6 +177,7 @@
     private string? _contextMenuSessionName = null;
     private string? _contextMenuWorkingDirectory = null;
     private bool _contextMenuIsOpen = false; // true = Open Session, false = Closed Session
+    private bool _contextMenuIsAdmin = false; // true = Admin session
     private double _contextMenuX = 0;
     private double _contextMenuY = 0;
 
@@ -249,6 +257,7 @@
                 SessionName = s.Name ?? "Unnamed",
                 WorkingDirectory = s.WorkingDirectory ?? "C:\\temp",
                 CreatedAt = s.CreatedAt,
+                IsAdmin = s.RunAsAdmin, // Carica flag amministratore dal database
                 // ConnectionId: controllare se processo in memoria
                 ConnectionId = TerminalManager.GetConnectionIdByClaudeSessionId(s.SessionId)
             }).ToList();
@@ -291,7 +300,7 @@
     /// <summary>
     /// Naviga alla sessione selezionata tramite query parameters.
     /// </summary>
-    private void NavigateToSession(string? sessionId, string? sessionName, string? workingDirectory, bool isOpen)
+    private void NavigateToSession(string? sessionId, string? sessionName, string? workingDirectory, bool isOpen, bool runAsAdmin = false)
     {
         if (string.IsNullOrEmpty(sessionId))
             return;
@@ -299,7 +308,8 @@
         var queryString = $"?sessionId={Uri.EscapeDataString(sessionId)}" +
                           $"&sessionName={Uri.EscapeDataString(sessionName ?? "Unnamed")}" +
                           $"&workingDir={Uri.EscapeDataString(workingDirectory ?? "C:\\temp")}" +
-                          $"&isOpen={isOpen}";
+                          $"&isOpen={isOpen}" +
+                          $"&runAsAdmin={runAsAdmin}";
 
         NavigationManager.NavigateTo(queryString);
     }
@@ -315,12 +325,13 @@
     /// <summary>
     /// Mostra il menu contestuale per una sessione.
     /// </summary>
-    private void ShowContextMenu(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, string sessionId, string? sessionName, string? workingDirectory, bool isOpen)
+    private void ShowContextMenu(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, string sessionId, string? sessionName, string? workingDirectory, bool isOpen, bool isAdmin = false)
     {
         _contextMenuSessionId = sessionId;
         _contextMenuSessionName = sessionName;
         _contextMenuWorkingDirectory = workingDirectory;
         _contextMenuIsOpen = isOpen;
+        _contextMenuIsAdmin = isAdmin;
         _contextMenuX = e.ClientX;
         _contextMenuY = e.ClientY;
         _showContextMenu = true;
@@ -338,8 +349,8 @@
 
         try
         {
-            // Naviga a Index.razor per aprire la sessione con nome e working directory
-            NavigateToSession(_contextMenuSessionId, _contextMenuSessionName, _contextMenuWorkingDirectory, false);
+            // Naviga a Index.razor per aprire la sessione con nome e working directory (runAsAdmin=false)
+            NavigateToSession(_contextMenuSessionId, _contextMenuSessionName, _contextMenuWorkingDirectory, false, runAsAdmin: false);
 
             // Refresh lista sessioni dopo breve delay (permette al DB di aggiornarsi)
             await Task.Delay(500);
@@ -349,6 +360,32 @@
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Error opening session: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Handler per aprire una Closed Session come amministratore (tasto destro → Apri come amministratore).
+    /// </summary>
+    private async Task HandleOpenSessionAsAdmin()
+    {
+        _showContextMenu = false;
+
+        if (string.IsNullOrEmpty(_contextMenuSessionId))
+            return;
+
+        try
+        {
+            // Naviga a Index.razor per aprire la sessione con runAsAdmin=true
+            NavigateToSession(_contextMenuSessionId, _contextMenuSessionName, _contextMenuWorkingDirectory, false, runAsAdmin: true);
+
+            // Refresh lista sessioni dopo breve delay (permette al DB di aggiornarsi)
+            await Task.Delay(500);
+            await LoadSessions();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error opening session as admin: {ex.Message}");
         }
     }
 
