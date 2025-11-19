@@ -1,11 +1,33 @@
 namespace ClaudeGui.Blazor.Models;
 
 /// <summary>
+/// Tipo di terminale gestito da questa sessione.
+/// </summary>
+public enum TerminalType
+{
+    /// <summary>
+    /// Processo claude.exe - terminale Claude AI.
+    /// </summary>
+    Claude,
+
+    /// <summary>
+    /// Processo pwsh.exe - terminale PowerShell interattivo.
+    /// </summary>
+    PowerShell
+}
+
+/// <summary>
 /// Informazioni su una sessione terminal attiva in memoria.
 /// Contiene sia il ConnectionId (per routing SignalR) che il ClaudeSessionId (UUID).
 /// </summary>
 public class ActiveSessionInfo
 {
+    /// <summary>
+    /// Tipo di terminale (Claude o PowerShell).
+    /// Di default è Claude, ma ogni sessione può avere terminali multipli.
+    /// </summary>
+    public TerminalType Type { get; set; } = TerminalType.Claude;
+
     /// <summary>
     /// SignalR Connection ID - usato come chiave per routing messaggi.
     /// Viene generato immediatamente quando si crea la sessione.

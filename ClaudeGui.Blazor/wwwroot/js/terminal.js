@@ -144,8 +144,8 @@ window.ClaudeTerminal = (function () {
             // ✅ ROUTING CORRETTO: Notifica SOLO il terminal specifico
             const terminalData = terminals.get(connectionId);
             if (terminalData && terminalData.dotNetRef) {
-                console.log('[ClaudeTerminal] Calling Blazor OnSessionIdDetected for terminal:', connectionId);
-                terminalData.dotNetRef.invokeMethodAsync('OnSessionIdDetected', claudeSessionId)
+                console.log('[ClaudeTerminal] Calling Blazor OnSessionIdDetectedCallback for terminal:', connectionId);
+                terminalData.dotNetRef.invokeMethodAsync('OnSessionIdDetectedCallback', claudeSessionId)
                     .then(() => {
                         console.log('[ClaudeTerminal] ✅ Blazor UI updated with Session ID');
                     })
@@ -416,6 +416,160 @@ window.ClaudeTerminal = (function () {
     }
 
     /**
+     * Inizializza un nuovo terminal PowerShell xterm.js.
+     * Simile a init() ma chiama CreatePowerShellTerminal invece di CreateSession.
+     *
+     * @param {string} elementId - ID dell'elemento HTML dove montare il terminal
+     * @param {string} workingDirectory - Working directory per PowerShell
+     * @param {string} parentClaudeSessionId - Claude Session ID della sessione parent
+     * @param {object} dotNetRef - Riferimento .NET per callback a Blazor
+     * @returns {Promise<string>} - Connection ID del terminal PowerShell
+     */
+    async function initPowerShell(elementId, workingDirectory, parentClaudeSessionId, dotNetRef) {
+        console.log('[ClaudeTerminal] initPowerShell() called:', { elementId, workingDirectory, parentClaudeSessionId, hasDotNetRef: !!dotNetRef });
+
+        try {
+            // 1. Inizializza SignalR se necessario
+            await initializeSignalR();
+
+            // 2. Crea terminal xterm.js PRIMA di chiamare CreatePowerShellTerminal
+            const terminalElement = document.getElementById(elementId);
+            if (!terminalElement) {
+                throw new Error(`Elemento con ID '${elementId}' non trovato`);
+            }
+
+            const terminal = new Terminal({
+                cursorBlink: true,
+                fontSize: 14,
+                fontFamily: 'Consolas, "Courier New", monospace',
+                theme: {
+                    background: '#012456', // Tema PowerShell blu scuro
+                    foreground: '#d4d4d4',
+                    cursor: '#ffffff',
+                    black: '#000000',
+                    red: '#cd3131',
+                    green: '#0dbc79',
+                    yellow: '#e5e510',
+                    blue: '#2472c8',
+                    magenta: '#bc3fbc',
+                    cyan: '#11a8cd',
+                    white: '#e5e5e5',
+                    brightBlack: '#666666',
+                    brightRed: '#f14c4c',
+                    brightGreen: '#23d18b',
+                    brightYellow: '#f5f543',
+                    brightBlue: '#3b8eea',
+                    brightMagenta: '#d670d6',
+                    brightCyan: '#29b8db',
+                    brightWhite: '#e5e5e5'
+                },
+                scrollback: 10000,
+                convertEol: false,
+                allowTransparency: false
+            });
+
+            // Crea FitAddon per adattare automaticamente il terminale al container
+            const fitAddon = new FitAddon.FitAddon();
+            terminal.loadAddon(fitAddon);
+
+            // Apri terminal nell'elemento DOM
+            terminal.open(terminalElement);
+
+            // Adatta le dimensioni del terminale al container
+            setTimeout(() => {
+                try {
+                    fitAddon.fit();
+                    console.log('[ClaudeTerminal] PowerShell terminal fitted - rows:', terminal.rows, 'cols:', terminal.cols);
+                } catch (err) {
+                    console.error('[ClaudeTerminal] Error fitting PowerShell terminal:', err);
+                }
+            }, 100);
+
+            // 3. Genera connectionId univoco per questo terminal PowerShell
+            const uniqueConnectionId = elementId;
+            console.log('[ClaudeTerminal] PowerShell using unique connectionId:', uniqueConnectionId);
+
+            // 4. Gestione input utente (onData = input da tastiera)
+            terminal.onData((data) => {
+                hubConnection.invoke('SendInput', uniqueConnectionId, data).catch(err => {
+                    console.error('[ClaudeTerminal] Errore invio input PowerShell:', err);
+                    terminal.write(`\r\n\x1b[31m[Errore invio: ${err.message}]\x1b[0m\r\n`);
+                });
+            });
+
+            // 5. Aggiungi terminal alla mappa SUBITO con ID temporaneo
+            const tempId = elementId;
+            terminals.set(tempId, {
+                terminal: terminal,
+                fitAddon: fitAddon,
+                elementId: elementId,
+                sessionId: null,
+                dotNetRef: dotNetRef
+            });
+            console.log('[ClaudeTerminal] PowerShell terminal registered with temp ID:', tempId);
+
+            // 6. Chiama CreatePowerShellTerminal con connectionId univoco
+            console.log('[ClaudeTerminal] Calling CreatePowerShellTerminal with connectionId:', uniqueConnectionId);
+            const returnedConnectionId = await hubConnection.invoke('CreatePowerShellTerminal', workingDirectory, parentClaudeSessionId, uniqueConnectionId);
+            console.log('[ClaudeTerminal] ✅ CreatePowerShellTerminal returned connectionId:', returnedConnectionId);
+
+            // 7. Aggiorna mappa con ConnectionId reale
+            const terminalData = terminals.get(tempId);
+            terminals.delete(tempId);
+            terminals.set(returnedConnectionId, {
+                ...terminalData,
+                sessionId: returnedConnectionId,
+                dotNetRef: dotNetRef
+            });
+            console.log('[ClaudeTerminal] PowerShell terminal remapped:', tempId, '→', returnedConnectionId);
+
+            // 8. Registra handler per resize
+            terminal.onResize(({ cols, rows }) => {
+                console.log('[ClaudeTerminal] PowerShell terminal resized:', { cols, rows });
+                hubConnection.invoke('ResizeTerminal', returnedConnectionId, cols, rows)
+                    .catch(err => console.error('[ClaudeTerminal] Error sending resize:', err));
+            });
+
+            // 9. Invia dimensioni iniziali al PTY backend
+            setTimeout(() => {
+                console.log('[ClaudeTerminal] Sending initial size to PowerShell PTY:', terminal.rows, 'x', terminal.cols);
+                hubConnection.invoke('ResizeTerminal', returnedConnectionId, terminal.cols, terminal.rows)
+                    .catch(err => console.error('[ClaudeTerminal] Error sending initial resize:', err));
+            }, 200);
+
+            // 10. Listener per window resize con debouncing
+            let resizeTimeout;
+            const handleWindowResize = () => {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(() => {
+                    try {
+                        fitAddon.fit();
+                        console.log('[ClaudeTerminal] PowerShell terminal refitted:', terminal.rows, 'x', terminal.cols);
+                    } catch (err) {
+                        console.error('[ClaudeTerminal] Error refitting PowerShell on resize:', err);
+                    }
+                }, 300);
+            };
+
+            window.addEventListener('resize', handleWindowResize);
+
+            // Salva handler per cleanup
+            const updatedData = terminals.get(returnedConnectionId);
+            terminals.set(returnedConnectionId, {
+                ...updatedData,
+                resizeHandler: handleWindowResize,
+                resizeTimeout: resizeTimeout
+            });
+
+            return returnedConnectionId;
+
+        } catch (err) {
+            console.error('[ClaudeTerminal] Errore initPowerShell():', err);
+            throw err;
+        }
+    }
+
+    /**
      * Termina una sessione terminal e pulisce le risorse.
      *
      * @param {string} sessionId - ID della sessione da terminare
@@ -575,6 +729,7 @@ window.ClaudeTerminal = (function () {
     // API pubblica
     return {
         init: init,
+        initPowerShell: initPowerShell,
         dispose: dispose,
         getSessionInfo: getSessionInfo,
         getActiveSessions: getActiveSessions,

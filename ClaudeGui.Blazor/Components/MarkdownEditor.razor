@@ -1,0 +1,155 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JSRuntime
+
+<div class="markdown-editor-wrapper">
+    @if (!_isReady)
+    {
+        <div class="editor-placeholder">
+            <div class="spinner"></div>
+            <p>⏳ Waiting for session initialization...</p>
+        </div>
+    }
+    else
+    {
+        <div class="editor-toolbar">
+            <span class="editor-title">📝 Session Notes - @SessionId?.Substring(0, 8)</span>
+            <button @onclick="ManualSave" class="btn-save">💾 Save</button>
+        </div>
+        <div id="easymde-editor-@ElementId"></div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// Session ID di Claude (UUID). Null fino a quando SessionIdDetected viene chiamato.
+    /// </summary>
+    [Parameter]
+    public string? SessionId { get; set; }
+
+    /// <summary>
+    /// Working directory dove salvare il file .md
+    /// </summary>
+    [Parameter]
+    public string WorkingDirectory { get; set; } = "C:\\";
+
+    private string ElementId = Guid.NewGuid().ToString();
+    private DotNetObjectReference<MarkdownEditor>? _dotNetRef;
+    private bool _isReady = false;
+    private System.Threading.Timer? _autoSaveTimer;
+    private string _currentContent = "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrEmpty(SessionId))
+        {
+            // Resume: SessionId già noto, carica file subito
+            await InitializeEditor();
+        }
+        // Altrimenti: nuova sessione, aspetta SessionIdDetected
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _isReady)
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            await JSRuntime.InvokeVoidAsync(
+                "MarkdownEditor.initialize",
+                $"easymde-editor-{ElementId}",
+                _dotNetRef,
+                _currentContent
+            );
+        }
+    }
+
+    /// <summary>
+    /// Chiamato da Index.razor quando SessionId viene rilevato per nuove sessioni
+    /// </summary>
+    [JSInvokable]
+    public async Task OnSessionIdDetected(string sessionId)
+    {
+        SessionId = sessionId;
+        await InitializeEditor();
+        StateHasChanged();
+    }
+
+    private async Task InitializeEditor()
+    {
+        // Carica contenuto file (crea se non esiste)
+        var filePath = Path.Combine(WorkingDirectory, $"{SessionId}.md");
+
+        if (File.Exists(filePath))
+        {
+            _currentContent = await File.ReadAllTextAsync(filePath);
+        }
+        else
+        {
+            // Crea nuovo file con template iniziale
+            _currentContent = $"# Session Notes - {SessionId}\n\n" +
+                            $"Created: {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n\n" +
+                            "## Notes\n\n" +
+                            "Start typing your notes here...\n";
+            await File.WriteAllTextAsync(filePath, _currentContent);
+        }
+
+        _isReady = true;
+    }
+
+    /// <summary>
+    /// Callback da JavaScript quando contenuto editor cambia
+    /// </summary>
+    [JSInvokable]
+    public void OnContentChanged(string content)
+    {
+        _currentContent = content;
+
+        // Reset autosave timer (debounce 2 secondi)
+        _autoSaveTimer?.Dispose();
+        _autoSaveTimer = new System.Threading.Timer(
+            async _ => await SaveContent(),
+            null,
+            2000,
+            System.Threading.Timeout.Infinite
+        );
+    }
+
+    private async Task SaveContent()
+    {
+        if (string.IsNullOrEmpty(SessionId)) return;
+
+        try
+        {
+            var filePath = Path.Combine(WorkingDirectory, $"{SessionId}.md");
+            await File.WriteAllTextAsync(filePath, _currentContent);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error saving markdown: {ex.Message}");
+        }
+    }
+
+    private async Task ManualSave()
+    {
+        await SaveContent();
+    }
+
+    async ValueTask IAsyncDisposable.DisposeAsync()
+    {
+        _autoSaveTimer?.Dispose();
+
+        if (_isReady)
+        {
+            await SaveContent(); // Salva prima di chiudere
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("MarkdownEditor.dispose", $"easymde-editor-{ElementId}");
+            }
+            catch
+            {
+                // Ignore errors during dispose
+            }
+        }
+
+        _dotNetRef?.Dispose();
+    }
+}

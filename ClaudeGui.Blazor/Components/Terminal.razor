@@ -1,21 +1,29 @@
 @using Microsoft.JSInterop
+@using ClaudeGui.Blazor.Models
 @inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 
 <div class="terminal-wrapper">
     <div class="terminal-header">
         <span class="terminal-title">
-            <span class="terminal-icon">🖥️</span>
-            Claude Terminal
+            <span class="terminal-icon">@(Type == TerminalType.PowerShell ? "⚡" : "🖥️")</span>
+            @(Type == TerminalType.PowerShell ? "PowerShell Terminal" : "Claude Terminal")
         </span>
         <span class="terminal-session-info">
-            @if (!string.IsNullOrEmpty(ClaudeSessionId))
+            @if (Type == TerminalType.Claude)
             {
-                <span class="session-id">Claude Session: @ClaudeSessionId</span>
+                @if (!string.IsNullOrEmpty(ClaudeSessionId))
+                {
+                    <span class="session-id">Claude Session: @ClaudeSessionId</span>
+                }
+                else
+                {
+                    <span class="session-id detecting">Claude Session: Detecting...</span>
+                }
             }
             else
             {
-                <span class="session-id detecting">Claude Session: Detecting...</span>
+                <span class="session-id">PowerShell 7</span>
             }
             @if (!string.IsNullOrEmpty(WorkingDirectory))
             {
@@ -28,7 +36,13 @@
 
 @code {
     /// <summary>
-    /// Session ID esistente per riprendere una sessione (null per nuova sessione).
+    /// Tipo di terminale (Claude o PowerShell).
+    /// </summary>
+    [Parameter]
+    public TerminalType Type { get; set; } = TerminalType.Claude;
+
+    /// <summary>
+    /// Session ID esistente per riprendere una sessione (null per nuova sessione, solo Claude).
     /// </summary>
     [Parameter]
     public string? ExistingSessionId { get; set; }
@@ -40,7 +54,7 @@
     public string? SessionName { get; set; }
 
     /// <summary>
-    /// Working directory per Claude Code.
+    /// Working directory per il terminale.
     /// </summary>
     [Parameter]
     public string WorkingDirectory { get; set; } = "C:\\";
@@ -53,7 +67,13 @@
     public EventCallback<string> OnSessionInitialized { get; set; }
 
     /// <summary>
-    /// Callback invocato quando il processo Claude termina.
+    /// Callback invocato quando il Claude Session ID viene rilevato (solo per terminal Claude).
+    /// </summary>
+    [Parameter]
+    public EventCallback<string> OnSessionIdDetected { get; set; }
+
+    /// <summary>
+    /// Callback invocato quando il processo termina.
     /// </summary>
     [Parameter]
     public EventCallback OnProcessCompleted { get; set; }
@@ -110,16 +130,31 @@
                 // Crea riferimento .NET per callback da JavaScript
                 _dotNetRef = DotNetObjectReference.Create(this);
 
-                // Inizializza terminal JavaScript - ritorna SUBITO il ConnectionId
-                // Il Session ID di Claude arriverà in background quando /status lo rileva
-                ConnectionId = await JSRuntime.InvokeAsync<string>(
-                    "ClaudeTerminal.init",
-                    TerminalElementId,
-                    ExistingSessionId,
-                    WorkingDirectory,
-                    SessionName,
-                    _dotNetRef // Passa riferimento per callback
-                );
+                // Inizializza terminal JavaScript in base al tipo
+                if (Type == TerminalType.Claude)
+                {
+                    // Inizializza terminal Claude - ritorna SUBITO il ConnectionId
+                    // Il Session ID di Claude arriverà in background quando /status lo rileva
+                    ConnectionId = await JSRuntime.InvokeAsync<string>(
+                        "ClaudeTerminal.init",
+                        TerminalElementId,
+                        ExistingSessionId,
+                        WorkingDirectory,
+                        SessionName,
+                        _dotNetRef // Passa riferimento per callback
+                    );
+                }
+                else
+                {
+                    // Inizializza terminal PowerShell - ritorna SUBITO il ConnectionId
+                    ConnectionId = await JSRuntime.InvokeAsync<string>(
+                        "ClaudeTerminal.initPowerShell",
+                        TerminalElementId,
+                        WorkingDirectory,
+                        ExistingSessionId ?? "", // Parent Claude SessionId per associazione
+                        _dotNetRef // Passa riferimento per callback
+                    );
+                }
 
                 _isInitialized = true;
 
@@ -142,15 +177,21 @@
 
     /// <summary>
     /// Metodo chiamato da JavaScript quando il Session ID viene rilevato.
-    /// Aggiorna la UI con il Session ID di Claude.
+    /// Aggiorna la UI con il Session ID di Claude e notifica il parent component.
     /// </summary>
     /// <param name="sessionId">Session ID di Claude (UUID)</param>
     [JSInvokable]
-    public void OnSessionIdDetected(string sessionId)
+    public async Task OnSessionIdDetectedCallback(string sessionId)
     {
         Console.WriteLine($"[Terminal.razor] 🎯 Session ID detected: {sessionId}");
         ClaudeSessionId = sessionId;
         StateHasChanged(); // Forza aggiornamento UI
+
+        // Notifica parent component (Index.razor) se callback disponibile
+        if (OnSessionIdDetected.HasDelegate)
+        {
+            await OnSessionIdDetected.InvokeAsync(sessionId);
+        }
     }
 
     /// <summary>

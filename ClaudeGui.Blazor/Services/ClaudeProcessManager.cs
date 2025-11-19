@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using ClaudeGui.Blazor.Models;
 using ClaudeGui.Blazor.Services.ConPTY;
 using Serilog;
 
@@ -26,7 +27,7 @@ namespace ClaudeGui.Blazor.Services
     }
 
     /// <summary>
-    /// Manages a persistent Claude Code process for a single conversation.
+    /// Manages a persistent terminal process (Claude or PowerShell) for a single conversation.
     /// Handles process lifecycle via ConPTY, stdin/stdout communication, and termination.
     /// </summary>
     public class ClaudeProcessManager : IDisposable
@@ -35,8 +36,9 @@ namespace ClaudeGui.Blazor.Services
         private bool _isRunning;
         private bool _wasKilled;
         private string? _sessionId; // Può essere passato al costruttore (resume) o rilevato da /status (nuova sessione)
-        private readonly string _workingDirectory; // Working directory per il processo Claude
+        private readonly string _workingDirectory; // Working directory per il processo
         private readonly bool _isNewSession; // Flag per determinare se inviare /status o no (false per resume)
+        private readonly TerminalType _terminalType; // Tipo di terminale (Claude o PowerShell)
 
         // Terminal dimensions (matching typical xterm.js defaults)
         private const int TERMINAL_ROWS = 24;
@@ -63,19 +65,21 @@ namespace ClaudeGui.Blazor.Services
         /// <summary>
         /// Constructor
         /// </summary>
-        /// <param name="resumeSessionId">Optional session ID to resume</param>
-        /// <param name="workingDirectory">Optional working directory for Claude process. If null, uses AppConfig default.</param>
+        /// <param name="terminalType">Tipo di terminale (Claude o PowerShell)</param>
+        /// <param name="resumeSessionId">Optional session ID to resume (solo per Claude)</param>
+        /// <param name="workingDirectory">Optional working directory. If null, uses AppConfig default.</param>
         /// <param name="isNewSession">True se nuova sessione (invia /status), False se resume (Session ID già noto)</param>
-        public ClaudeProcessManager(string? resumeSessionId = null, string? workingDirectory = null, bool isNewSession = true)
+        public ClaudeProcessManager(TerminalType terminalType = TerminalType.Claude, string? resumeSessionId = null, string? workingDirectory = null, bool isNewSession = true)
         {
+            _terminalType = terminalType;
             _sessionId = resumeSessionId;
             _workingDirectory = workingDirectory ?? AppConfig.ClaudeWorkingDirectory;
             _isNewSession = isNewSession;
             _isRunning = false;
             _wasKilled = false;
 
-            Log.Information("ClaudeProcessManager created with working directory: {WorkingDir}, isNewSession: {IsNewSession}",
-                _workingDirectory, _isNewSession);
+            Log.Information("ClaudeProcessManager created: Type={TerminalType}, WorkingDir={WorkingDir}, IsNewSession={IsNewSession}",
+                _terminalType, _workingDirectory, _isNewSession);
         }
 
         /// <summary>
@@ -92,24 +96,23 @@ namespace ClaudeGui.Blazor.Services
         }
 
         /// <summary>
-        /// Starts the Claude process via ConPTY (Windows Pseudo Console).
+        /// Starts the terminal process (Claude or PowerShell) via ConPTY (Windows Pseudo Console).
         /// </summary>
         public void Start()
         {
             if (_isRunning)
             {
-                Log.Warning("Claude PTY terminal already running");
+                Log.Warning("{TerminalType} PTY terminal already running", _terminalType);
                 return;
             }
 
             try
             {
-                Log.Information("🚀 Starting Claude process via ConPTY...");
+                Log.Information("🚀 Starting {TerminalType} process via ConPTY...", _terminalType);
 
                 // Nota: L'applicazione ClaudeGui.Blazor è configurata per richiedere sempre privilegi amministratore
                 // tramite app.manifest (requestedExecutionLevel="requireAdministrator").
-                // Tutti i processi claude.exe lanciati ereditano automaticamente i privilegi admin.
-                // Il flag _runAsAdmin viene mantenuto per compatibilità ma non ha effetto pratico.
+                // Tutti i processi lanciati ereditano automaticamente i privilegi admin.
 
                 // Crea istanza Terminal
                 _terminal = new Terminal();
@@ -117,15 +120,18 @@ namespace ClaudeGui.Blazor.Services
                 // Registra handler per process exit
                 _terminal.ProcessExited += OnProcessExited;
 
-                // Build command line
-                var command = BuildClaudeCommand();
+                // Build command line in base al tipo di terminale
+                var command = _terminalType == TerminalType.Claude
+                    ? BuildClaudeCommand()
+                    : BuildPowerShellCommand();
+
                 Log.Information("Command: {Command}", command);
                 Log.Information("WorkingDirectory: {WorkingDir}", _workingDirectory);
 
                 // Avvia processo tramite ConPTY
                 _terminal.Start(command, _workingDirectory, TERMINAL_ROWS, TERMINAL_COLS);
 
-                Log.Information("✅ Claude PTY process started! PID: {ProcessId}", _terminal.Pid);
+                Log.Information("✅ {TerminalType} PTY process started! PID: {ProcessId}", _terminalType, _terminal.Pid);
 
                 SetIsRunning(true);
 
@@ -133,23 +139,27 @@ namespace ClaudeGui.Blazor.Services
                 Log.Information("📖 Starting async read task for PTY output...");
                 _ = Task.Run(async () => await ReadPtyOutputAsync());
 
-                Log.Information("✅ Claude PTY terminal started (PID: {ProcessId}, Resume: {Resume}, WorkingDir: {WorkingDir})",
-                                _terminal.Pid, _sessionId ?? "none", _workingDirectory);
+                Log.Information("✅ {TerminalType} PTY terminal started (PID: {ProcessId}, Resume: {Resume}, WorkingDir: {WorkingDir})",
+                                _terminalType, _terminal.Pid, _sessionId ?? "none", _workingDirectory);
 
-                // Per nuove sessioni: /status verrà inviato quando viene rilevato il marker $$Ready$$ nell'output
+                // Per nuove sessioni Claude: /status verrà inviato quando viene rilevato il marker $$Ready$$ nell'output
                 // Per resume: Session ID già noto
-                if (string.IsNullOrEmpty(_sessionId))
+                // Per PowerShell: nessun /status da inviare
+                if (_terminalType == TerminalType.Claude)
                 {
-                    Log.Information("📝 /status command will be sent when $$Ready$$ marker is detected in output");
-                }
-                else
-                {
-                    Log.Information("🔄 Resume mode - Session ID already known: {SessionId}", _sessionId);
+                    if (string.IsNullOrEmpty(_sessionId))
+                    {
+                        Log.Information("📝 /status command will be sent when $$Ready$$ marker is detected in output");
+                    }
+                    else
+                    {
+                        Log.Information("🔄 Resume mode - Session ID already known: {SessionId}", _sessionId);
+                    }
                 }
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "Failed to start Claude PTY process");
+                Log.Error(ex, "Failed to start {TerminalType} PTY process", _terminalType);
                 _isRunning = false;
                 throw;
             }
@@ -177,6 +187,19 @@ namespace ClaudeGui.Blazor.Services
             }
 
             return command.ToString().Trim();
+        }
+
+        /// <summary>
+        /// Builds full command line for pwsh.exe (PowerShell 7) in interactive mode via ConPTY.
+        /// PowerShell viene lanciato con prompt interattivo e supporto ANSI colors.
+        /// </summary>
+        private string BuildPowerShellCommand()
+        {
+            // pwsh.exe è PowerShell 7 (installato in "C:\Program Files\PowerShell\7\pwsh.exe")
+            // -NoLogo: non mostra banner iniziale
+            // -NoExit: mantiene la shell aperta dopo aver eseguito comandi
+            // Prompt interattivo: PowerShell gestisce autonomamente il proprio stato
+            return @"C:\Program Files\PowerShell\7\pwsh.exe -NoLogo -NoExit";
         }
 
         /// <summary>
@@ -260,15 +283,16 @@ namespace ClaudeGui.Blazor.Services
                     Log.Debug("✅ RawOutputReceived event raised with {BytesRead} bytes", bytesRead);
 
                     // Accumula output nel buffer (serve per rilevare $$Ready$$ e Session ID)
-                    // Solo per nuove sessioni (quando _sessionId è ancora null)
-                    if (string.IsNullOrEmpty(_sessionId))
+                    // Solo per nuove sessioni Claude (quando _sessionId è ancora null)
+                    if (_terminalType == TerminalType.Claude && string.IsNullOrEmpty(_sessionId))
                     {
                         _outputBuffer.Append(output);
                     }
 
-                    // Rilevamento marker $$Ready$$: invia /status quando prompt è pronto (solo per nuove sessioni)
+                    // Rilevamento marker $$Ready$$: invia /status quando prompt è pronto (solo per nuove sessioni Claude)
                     // Se _isNewSession=false (resume), NON inviare /status perché Session ID è già noto
-                    if (!_statusCommandSent && _isNewSession && string.IsNullOrEmpty(_sessionId))
+                    // PowerShell: nessun /status da inviare
+                    if (_terminalType == TerminalType.Claude && !_statusCommandSent && _isNewSession && string.IsNullOrEmpty(_sessionId))
                     {
                         var bufferContent = _outputBuffer.ToString();
                         if (bufferContent.Contains("$$Ready$$"))
@@ -326,8 +350,9 @@ namespace ClaudeGui.Blazor.Services
 
                     }
 
-                    // Se non abbiamo ancora Session ID (nuova sessione), prova a estrarlo dall'output
-                    if (string.IsNullOrEmpty(_sessionId))
+                    // Se non abbiamo ancora Session ID (nuova sessione Claude), prova a estrarlo dall'output
+                    // PowerShell: nessun Session ID da rilevare
+                    if (_terminalType == TerminalType.Claude && string.IsNullOrEmpty(_sessionId))
                     {
                         TryExtractSessionId();
                     }

@@ -1,0 +1,94 @@
+.markdown-editor-wrapper {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: #1e1e1e;
+}
+
+.editor-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #888;
+}
+
+.spinner {
+    border: 3px solid #333;
+    border-top: 3px solid #f39c12;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin-bottom: 1rem;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.editor-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    background: #2d2d2d;
+    border-bottom: 1px solid #3c3c3c;
+    flex-shrink: 0;
+}
+
+.editor-title {
+    font-weight: 600;
+    color: #d7d7d7;
+    font-size: 0.9rem;
+}
+
+.btn-save {
+    background: #f39c12;
+    color: white;
+    border: none;
+    padding: 0.4rem 0.8rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: background 0.2s ease;
+}
+
+.btn-save:hover {
+    background: #e67e22;
+}
+
+/* Override EasyMDE styles per dark theme */
+.markdown-editor-wrapper ::deep .CodeMirror {
+    background: #1e1e1e;
+    color: #d7d7d7;
+    border: none;
+    height: 100%;
+}
+
+.markdown-editor-wrapper ::deep .CodeMirror-gutters {
+    background: #252525;
+    border-right: 1px solid #3c3c3c;
+}
+
+.markdown-editor-wrapper ::deep .editor-toolbar {
+    background: #2d2d2d;
+    border-top: 1px solid #3c3c3c;
+    border-bottom: 1px solid #3c3c3c;
+}
+
+.markdown-editor-wrapper ::deep .editor-toolbar a {
+    color: #d7d7d7 !important;
+}
+
+.markdown-editor-wrapper ::deep .editor-toolbar a:hover {
+    background: #3c3c3c;
+    border-color: #555;
+}
+
+.markdown-editor-wrapper ::deep .editor-preview {
+    background: #1e1e1e;
+    color: #d7d7d7;
+}

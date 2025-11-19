@@ -19,19 +19,51 @@
         </div>
     </div>
 
-    <!-- Terminal Section -->
+    <!-- Terminal Section: 3-Panel Layout (Claude | Markdown Editor | PowerShell) -->
     @if (_openTerminals.Any())
     {
         <!-- Render tutti i terminal, nascondendo quelli inattivi con display:none -->
         @foreach (var terminal in _openTerminals)
         {
-            <div class="terminal-view" style="display: @(terminal.Key == _activeTerminalKey ? "block" : "none")">
-                <Terminal @key="@terminal.Key"
-                         WorkingDirectory="@terminal.WorkingDirectory"
-                         ExistingSessionId="@terminal.SessionId"
-                         SessionName="@terminal.SessionName"
-                         OnSessionInitialized="(connectionId) => HandleSessionInitialized(terminal.Key, connectionId)"
-                         OnProcessCompleted="() => HandleProcessCompleted(terminal.Key)" />
+            <div class="session-view" style="display: @(terminal.Key == _activeTerminalKey ? "grid" : "none")">
+                <!-- Left Panel: Claude Terminal -->
+                <div class="panel claude-panel">
+                    <Terminal @key="@($"{terminal.Key}-claude")"
+                             Type="TerminalType.Claude"
+                             WorkingDirectory="@terminal.WorkingDirectory"
+                             ExistingSessionId="@terminal.SessionId"
+                             SessionName="@terminal.SessionName"
+                             OnSessionInitialized="(connectionId) => HandleClaudeSessionInitialized(terminal.Key, connectionId)"
+                             OnSessionIdDetected="(sessionId) => OnClaudeSessionIdDetected(terminal.Key, sessionId)"
+                             OnProcessCompleted="() => HandleProcessCompleted(terminal.Key)" />
+                </div>
+
+                <!-- Center Panel: Markdown Editor -->
+                <div class="panel editor-panel">
+                    <MarkdownEditor @key="@($"{terminal.Key}-editor")"
+                                   SessionId="@terminal.DetectedClaudeSessionId"
+                                   WorkingDirectory="@terminal.WorkingDirectory" />
+                </div>
+
+                <!-- Right Panel: PowerShell Terminal -->
+                <div class="panel powershell-panel">
+                    @if (!string.IsNullOrEmpty(terminal.DetectedClaudeSessionId) && terminal.PowerShellConnectionId == null)
+                    {
+                        <Terminal @key="@($"{terminal.Key}-powershell")"
+                                 Type="TerminalType.PowerShell"
+                                 WorkingDirectory="@terminal.WorkingDirectory"
+                                 ExistingSessionId="@terminal.DetectedClaudeSessionId"
+                                 OnSessionInitialized="(connectionId) => HandlePowerShellSessionInitialized(terminal.Key, connectionId)"
+                                 OnProcessCompleted="() => {}" />
+                    }
+                    else if (string.IsNullOrEmpty(terminal.DetectedClaudeSessionId))
+                    {
+                        <div class="powershell-placeholder">
+                            <div class="spinner"></div>
+                            <p>Waiting for Claude Session ID...</p>
+                        </div>
+                    }
+                </div>
             </div>
         }
     }
@@ -70,15 +102,17 @@
     private bool _hasAutoLaunched = false; // Flag per evitare multipli auto-launch
 
     /// <summary>
-    /// Rappresenta un'istanza di terminal aperta.
+    /// Rappresenta un'istanza di terminal aperta con 3 panel (Claude + Editor + PowerShell).
     /// </summary>
     private class TerminalInstance
     {
         public string Key { get; set; } = Guid.NewGuid().ToString();
-        public string? ConnectionId { get; set; } // SignalR ConnectionId (impostato dopo init)
-        public string? SessionId { get; set; } // Claude Session UUID
+        public string? ConnectionId { get; set; } // SignalR ConnectionId del terminal Claude (impostato dopo init)
+        public string? SessionId { get; set; } // Claude Session UUID iniziale (per resume)
+        public string? DetectedClaudeSessionId { get; set; } // Claude Session UUID rilevato da /status (per nuove sessioni)
         public string? SessionName { get; set; }
         public string WorkingDirectory { get; set; } = "C:\\temp";
+        public string? PowerShellConnectionId { get; set; } // SignalR ConnectionId del terminal PowerShell
     }
 
     /// <summary>
@@ -213,20 +247,59 @@
     }
 
     /// <summary>
-    /// Handler chiamato quando una sessione terminal è stata inizializzata.
+    /// Handler chiamato quando il terminal Claude è stato inizializzato.
     /// Riceve il ConnectionId dal componente Terminal e aggiorna TerminalInstance.
     /// </summary>
-    private void HandleSessionInitialized(string terminalKey, string connectionId)
+    private void HandleClaudeSessionInitialized(string terminalKey, string connectionId)
     {
         // Trova TerminalInstance corrispondente e aggiorna ConnectionId
         var terminal = _openTerminals.FirstOrDefault(t => t.Key == terminalKey);
         if (terminal != null)
         {
             terminal.ConnectionId = connectionId;
-            Console.WriteLine($"[Index.razor] Terminal {terminalKey.Substring(0, 8)} initialized with ConnectionId {connectionId.Substring(0, 8)}");
+            Console.WriteLine($"[Index.razor] Claude terminal {terminalKey.Substring(0, 8)} initialized with ConnectionId {connectionId.Substring(0, 8)}");
+
+            // Se resume (SessionId già noto), imposta DetectedClaudeSessionId immediatamente
+            if (!string.IsNullOrEmpty(terminal.SessionId))
+            {
+                terminal.DetectedClaudeSessionId = terminal.SessionId;
+                Console.WriteLine($"[Index.razor] Resume mode - Claude SessionId already known: {terminal.SessionId}");
+                StateHasChanged(); // Trigger rendering dell'editor e del PowerShell terminal
+            }
+            // Per nuove sessioni, OnClaudeSessionIdDetected() verrà chiamato tramite callback
         }
 
-        SetStatus($"Session {connectionId.Substring(0, 8)} initialized successfully", "success");
+        SetStatus($"Claude session {connectionId.Substring(0, 8)} initialized successfully", "success");
+    }
+
+    /// <summary>
+    /// Handler chiamato quando il Claude Session ID viene rilevato da /status.
+    /// Aggiorna DetectedClaudeSessionId per attivare l'editor e il terminal PowerShell.
+    /// </summary>
+    private void OnClaudeSessionIdDetected(string terminalKey, string claudeSessionId)
+    {
+        var terminal = _openTerminals.FirstOrDefault(t => t.Key == terminalKey);
+        if (terminal != null)
+        {
+            terminal.DetectedClaudeSessionId = claudeSessionId;
+            Console.WriteLine($"[Index.razor] Claude SessionId detected for terminal {terminalKey.Substring(0, 8)}: {claudeSessionId}");
+            StateHasChanged(); // Trigger rendering del MarkdownEditor e PowerShell terminal
+        }
+    }
+
+    /// <summary>
+    /// Handler chiamato quando il terminal PowerShell è stato inizializzato.
+    /// </summary>
+    private void HandlePowerShellSessionInitialized(string terminalKey, string connectionId)
+    {
+        var terminal = _openTerminals.FirstOrDefault(t => t.Key == terminalKey);
+        if (terminal != null)
+        {
+            terminal.PowerShellConnectionId = connectionId;
+            Console.WriteLine($"[Index.razor] PowerShell terminal {terminalKey.Substring(0, 8)} initialized with ConnectionId {connectionId.Substring(0, 8)}");
+        }
+
+        SetStatus($"PowerShell session {connectionId.Substring(0, 8)} initialized successfully", "success");
     }
 
     /// <summary>

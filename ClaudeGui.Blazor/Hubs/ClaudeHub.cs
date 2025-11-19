@@ -19,7 +19,7 @@ public class ClaudeHub : Hub
     }
 
     /// <summary>
-    /// Client crea una nuova sessione terminal e aspetta il Session ID reale di Claude.
+    /// Client crea una nuova sessione terminal Claude e aspetta il Session ID reale di Claude.
     /// Event handlers sono gestiti automaticamente da TerminalManager con IHubContext.
     /// </summary>
     /// <param name="workingDirectory">Working directory per Claude</param>
@@ -48,6 +48,32 @@ public class ClaudeHub : Hub
             realSessionId, sessionName ?? "unnamed", connectionId);
 
         // Ritorna il Connection ID univoco per questo terminal
+        return connectionId;
+    }
+
+    /// <summary>
+    /// Client crea una nuova sessione terminal PowerShell interattiva.
+    /// PowerShell viene lanciato in modalità admin (eredita privilegi dall'app).
+    /// </summary>
+    /// <param name="workingDirectory">Working directory per PowerShell</param>
+    /// <param name="parentClaudeSessionId">Claude Session ID della sessione "parent" (per associazione)</param>
+    /// <param name="customConnectionId">ID univoco generato lato client per identificare questo terminal</param>
+    /// <returns>Connection ID univoco per questo terminal PowerShell</returns>
+    public async Task<string> CreatePowerShellTerminal(string workingDirectory, string parentClaudeSessionId, string customConnectionId)
+    {
+        _logger.Information("Client {HubConnectionId} creating PowerShell terminal with CustomId: {ConnectionId}, WorkingDir: {WorkingDir}, Parent: {Parent}",
+            Context.ConnectionId, customConnectionId, workingDirectory, parentClaudeSessionId);
+
+        // Aggiungi a SignalR group per routing messaggi
+        await Groups.AddToGroupAsync(Context.ConnectionId, customConnectionId);
+
+        // Crea terminal PowerShell
+        var connectionId = await _terminalManager.CreatePowerShellTerminal(workingDirectory, customConnectionId, parentClaudeSessionId);
+
+        _logger.Information("✅ PowerShell terminal {ConnectionId} created successfully (Parent: {Parent})",
+            connectionId, parentClaudeSessionId);
+
+        // Ritorna il Connection ID univoco per questo terminal PowerShell
         return connectionId;
     }
 

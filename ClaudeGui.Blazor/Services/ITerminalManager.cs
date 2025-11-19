@@ -7,7 +7,7 @@ namespace ClaudeGui.Blazor.Services;
 public interface ITerminalManager
 {
     /// <summary>
-    /// Crea una nuova sessione terminal e aspetta il Session ID reale di Claude.
+    /// Crea una nuova sessione terminal Claude e aspetta il Session ID reale di Claude.
     /// </summary>
     /// <param name="workingDirectory">Working directory per il processo Claude</param>
     /// <param name="sessionId">SessionId esistente (null per nuova sessione)</param>
@@ -15,6 +15,15 @@ public interface ITerminalManager
     /// <param name="sessionName">Nome della sessione (opzionale, per nuove sessioni)</param>
     /// <returns>Session ID reale di Claude (dopo parsing)</returns>
     Task<string> CreateSession(string workingDirectory, string? sessionId, string connectionId, string? sessionName = null);
+
+    /// <summary>
+    /// Crea una nuova sessione terminal PowerShell interattiva.
+    /// </summary>
+    /// <param name="workingDirectory">Working directory per il processo PowerShell</param>
+    /// <param name="connectionId">SignalR Connection ID per il routing dei messaggi</param>
+    /// <param name="parentClaudeSessionId">Claude Session ID della sessione "parent" (per associazione)</param>
+    /// <returns>Connection ID del terminale PowerShell creato</returns>
+    Task<string> CreatePowerShellTerminal(string workingDirectory, string connectionId, string parentClaudeSessionId);
 
     /// <summary>
     /// Ottiene il ProcessManager per una sessione.

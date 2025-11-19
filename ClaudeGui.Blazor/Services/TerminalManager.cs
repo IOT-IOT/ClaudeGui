@@ -96,6 +96,98 @@ public class TerminalManager : ITerminalManager
     }
 
     /// <summary>
+    /// Crea una nuova sessione terminal PowerShell interattiva.
+    /// PowerShell non ha SessionId, quindi usa solo connectionId per routing.
+    /// </summary>
+    /// <param name="workingDirectory">Working directory per il processo PowerShell</param>
+    /// <param name="connectionId">SignalR Connection ID per il routing dei messaggi</param>
+    /// <param name="parentClaudeSessionId">Claude Session ID della sessione "parent" (per associazione)</param>
+    /// <returns>Connection ID del terminale PowerShell creato</returns>
+    public Task<string> CreatePowerShellTerminal(string workingDirectory, string connectionId, string parentClaudeSessionId)
+    {
+        // PowerShell: nessun resume, nessun sessionId, sempre nuova istanza
+        var processManager = new ClaudeProcessManager(
+            terminalType: TerminalType.PowerShell,
+            resumeSessionId: null,
+            workingDirectory: workingDirectory,
+            isNewSession: true // Non rilevante per PowerShell, ma serve per coerenza
+        );
+
+        // Crea ActiveSessionInfo con metadata
+        var sessionInfo = new ActiveSessionInfo
+        {
+            Type = TerminalType.PowerShell,
+            ConnectionId = connectionId,
+            ClaudeSessionId = parentClaudeSessionId, // Per associare PowerShell a sessione Claude parent
+            ProcessManager = processManager,
+            SessionName = $"PowerShell-{parentClaudeSessionId.Substring(0, 8)}",
+            WorkingDirectory = workingDirectory,
+            CreatedAt = DateTime.Now
+        };
+
+        // Usa connectionId come chiave nel dictionary
+        if (_activeSessions.TryAdd(connectionId, sessionInfo))
+        {
+            _logger.Information("✅ Created PowerShell terminal - ConnectionId: {ConnectionId}, WorkingDir: {WorkingDir}, Parent: {Parent}",
+                connectionId, workingDirectory, parentClaudeSessionId);
+
+            // Registra event handlers semplificati per PowerShell (no Session ID detection)
+            RegisterPowerShellEventHandlers(processManager, connectionId);
+
+            // Avvia immediatamente il processo PowerShell
+            processManager.Start();
+            _logger.Information("🚀 Started PowerShell process for ConnectionId: {ConnectionId}", connectionId);
+
+            // Ritorna subito il connectionId
+            return Task.FromResult(connectionId);
+        }
+
+        throw new InvalidOperationException($"PowerShell terminal {connectionId} already exists");
+    }
+
+    /// <summary>
+    /// Registra gli event handlers del ProcessManager per PowerShell (semplificati, no Session ID detection).
+    /// </summary>
+    /// <param name="processManager">Process manager PowerShell</param>
+    /// <param name="connectionId">SignalR Connection ID per routing messaggi</param>
+    private void RegisterPowerShellEventHandlers(ClaudeProcessManager processManager, string connectionId)
+    {
+        // Handler per raw output da PowerShell PTY
+        processManager.RawOutputReceived += async (sender, e) =>
+        {
+            try
+            {
+                await _hubContext.Clients.All.SendAsync("ReceiveOutput", connectionId, e.RawOutput);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Error sending PowerShell output to connection {ConnectionId}", connectionId);
+            }
+        };
+
+        // Handler per completamento processo PowerShell
+        processManager.ProcessCompleted += async (sender, e) =>
+        {
+            try
+            {
+                _logger.Information("PowerShell process completed for ConnectionId {ConnectionId}, ExitCode: {ExitCode}",
+                    connectionId, e.ExitCode);
+
+                // Rimuovi sessione da _activeSessions (no DB update per PowerShell)
+                _activeSessions.TryRemove(connectionId, out _);
+                _logger.Information("🗑️ Removed PowerShell terminal from memory: ConnectionId={ConnectionId}", connectionId);
+
+                // Notifica client via SignalR
+                await _hubContext.Clients.All.SendAsync("ProcessCompleted", connectionId, e.ExitCode, e.WasKilled);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Error sending PowerShell ProcessCompleted to connection {ConnectionId}", connectionId);
+            }
+        };
+    }
+
+    /// <summary>
     /// Registra gli event handlers del ProcessManager per inviare eventi a SignalR.
     /// Usa IHubContext invece di Hub instance per evitare ObjectDisposedException.
     /// </summary>
