@@ -60,12 +60,24 @@
     background: #e67e22;
 }
 
+.editor-textarea {
+    display: none; /* EasyMDE lo trasforma in editor visuale */
+}
+
 /* Override EasyMDE styles per dark theme */
+.markdown-editor-wrapper ::deep .EasyMDEContainer {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
 .markdown-editor-wrapper ::deep .CodeMirror {
     background: #1e1e1e;
     color: #d7d7d7;
     border: none;
-    height: 100%;
+    height: auto;
+    flex: 1;
 }
 
 .markdown-editor-wrapper ::deep .CodeMirror-gutters {
