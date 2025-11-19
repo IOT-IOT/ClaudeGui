@@ -112,8 +112,11 @@
     opacity: 1 !important;
     display: flex !important;
     flex-wrap: nowrap !important;
-    overflow-x: auto !important;
+    overflow-x: visible !important;
     white-space: nowrap !important;
+    padding: 4px 8px !important;
+    min-height: 38px !important;
+    height: auto !important;
 }
 
 .markdown-editor-wrapper ::deep .editor-toolbar a {
@@ -121,6 +124,11 @@
     border: 1px solid transparent !important;
     flex-shrink: 0 !important;
     display: inline-block !important;
+    width: 28px !important;
+    height: 28px !important;
+    padding: 4px !important;
+    margin: 2px !important;
+    font-size: 14px !important;
 }
 
 .markdown-editor-wrapper ::deep .editor-toolbar a:hover,
@@ -131,11 +139,18 @@
 
 .markdown-editor-wrapper ::deep .editor-toolbar a i.fa {
     color: #d7d7d7 !important;
+    font-size: 14px !important;
+}
+
+.markdown-editor-wrapper ::deep .editor-toolbar .fa {
+    font-size: 14px !important;
 }
 
 .markdown-editor-wrapper ::deep .editor-toolbar i.separator {
     border-left: 1px solid #3c3c3c !important;
     border-right: 1px solid #3c3c3c !important;
+    margin: 0 4px !important;
+    width: 0 !important;
 }
 
 .markdown-editor-wrapper ::deep .editor-toolbar button {
