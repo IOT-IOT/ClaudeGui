@@ -123,12 +123,18 @@
     color: #d7d7d7 !important;
     border: 1px solid transparent !important;
     flex-shrink: 0 !important;
-    display: inline-block !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
     width: 28px !important;
     height: 28px !important;
-    padding: 4px !important;
+    min-width: 28px !important;
+    max-width: 28px !important;
+    padding: 0 !important;
     margin: 2px !important;
     font-size: 14px !important;
+    line-height: 28px !important;
+    box-sizing: border-box !important;
 }
 
 .markdown-editor-wrapper ::deep .editor-toolbar a:hover,
@@ -140,10 +146,21 @@
 .markdown-editor-wrapper ::deep .editor-toolbar a i.fa {
     color: #d7d7d7 !important;
     font-size: 14px !important;
+    line-height: 14px !important;
+    width: auto !important;
+    height: auto !important;
 }
 
 .markdown-editor-wrapper ::deep .editor-toolbar .fa {
     font-size: 14px !important;
+    line-height: 14px !important;
+}
+
+/* Fix specifico per icona tabella e altre che potrebbero essere più grandi */
+.markdown-editor-wrapper ::deep .editor-toolbar .fa-table,
+.markdown-editor-wrapper ::deep .editor-toolbar .fa-picture-o,
+.markdown-editor-wrapper ::deep .editor-toolbar .fa-arrows-alt {
+    font-size: 13px !important;
 }
 
 .markdown-editor-wrapper ::deep .editor-toolbar i.separator {
