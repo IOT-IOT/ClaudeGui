@@ -1,67 +1,104 @@
 using System.Diagnostics;
 using System.Reflection;
+using Microsoft.WindowsAPICodePack.Taskbar;
 
 namespace ClaudeGui.Blazor;
 
 /// <summary>
-/// Gestisce l'applicazione Windows Forms per la system tray icon.
+/// Gestisce l'applicazione Windows Forms con icona nella taskbar.
 /// Avvia il server Kestrel in background e fornisce un menu contestuale
 /// per aprire il browser e chiudere l'applicazione.
 /// </summary>
 public class TrayApplicationContext : ApplicationContext
 {
-    private readonly NotifyIcon _trayIcon;
+    private readonly Form _taskbarForm;
+    private readonly NotifyIcon _notifyIcon;
     private readonly string _serverUrl = "http://localhost:5000";
     private readonly IHost _webHost;
 
     /// <summary>
-    /// Costruttore: inizializza la system tray icon e avvia il server web.
+    /// Costruttore: inizializza la form nascosta con icona taskbar e avvia il server web.
     /// </summary>
     /// <param name="webHost">L'host Kestrel da avviare in background</param>
     public TrayApplicationContext(IHost webHost)
     {
         _webHost = webHost;
 
-        // Crea l'icona nella system tray
-        _trayIcon = new NotifyIcon
+        // Crea una form minimizzata con icona nella taskbar
+        _taskbarForm = new Form
+        {
+            // Form normale sempre minimizzata con icona nella taskbar
+            ShowInTaskbar = true,
+            WindowState = FormWindowState.Minimized,
+            FormBorderStyle = FormBorderStyle.FixedSingle,
+            StartPosition = FormStartPosition.Manual,
+            Location = new Point(-32000, -32000),
+            Size = new Size(300, 200),
+            Text = "ClaudeGui",
+            Icon = LoadIcon(),
+            MaximizeBox = false,
+            MinimizeBox = true,
+            ShowIcon = true,
+            ControlBox = true
+        };
+
+        // Crea NotifyIcon nascosto solo per fallback
+        _notifyIcon = new NotifyIcon
         {
             Icon = LoadIcon(),
-            ContextMenuStrip = CreateContextMenu(),
-            Visible = true,
+            Visible = false,
             Text = "ClaudeGui - Blazor Server"
         };
 
-        // Double-click sull'icona apre il browser
-        _trayIcon.DoubleClick += (s, e) => OpenBrowser();
+        // Impedisce il ripristino della finestra (mantiene sempre minimizzata)
+        _taskbarForm.Resize += (s, e) =>
+        {
+            if (_taskbarForm.WindowState != FormWindowState.Minimized)
+            {
+                _taskbarForm.WindowState = FormWindowState.Minimized;
+            }
+        };
+
+        // Impedisce la chiusura con Alt+F4, richiede menu "Esci"
+        _taskbarForm.FormClosing += (s, e) =>
+        {
+            if (e.CloseReason == CloseReason.UserClosing)
+            {
+                e.Cancel = true;
+                _taskbarForm.WindowState = FormWindowState.Minimized;
+            }
+        };
+
+        // Mostra la form minimizzata (icona visibile nella taskbar)
+        _taskbarForm.Show();
+        _taskbarForm.WindowState = FormWindowState.Minimized;
+
+        // Configura Jump List per il menu contestuale della taskbar
+        ConfigureJumpList();
 
         // Avvia il server Kestrel in background
         Task.Run(async () =>
         {
             try
             {
-                Console.WriteLine($"[TrayApp] Starting Kestrel server on {_serverUrl}...");
+                Console.WriteLine($"[TaskbarApp] Starting Kestrel server on {_serverUrl}...");
                 await _webHost.RunAsync();
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"[TrayApp] Error starting server: {ex.Message}");
-                MessageBox.Show(
-                    $"Errore nell'avvio del server:\n{ex.Message}",
-                    "ClaudeGui - Errore",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error
-                );
-                Application.Exit();
+                Console.Error.WriteLine($"[TaskbarApp] Error starting server: {ex.Message}");
+                _taskbarForm.Invoke((Action)(() =>
+                {
+                    MessageBox.Show(
+                        $"Errore nell'avvio del server:\n{ex.Message}",
+                        "ClaudeGui - Errore",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error
+                    );
+                    Application.Exit();
+                }));
             }
         });
-
-        // Messaggio di avvio
-        _trayIcon.ShowBalloonTip(
-            3000,
-            "ClaudeGui Avviato",
-            $"Server in ascolto su {_serverUrl}\nClicca l'icona per aprire il browser.",
-            ToolTipIcon.Info
-        );
     }
 
     /// <summary>
@@ -90,18 +127,18 @@ public class TrayApplicationContext : ApplicationContext
             }
 
             // Fallback finale: icona di default Windows
-            Console.WriteLine("[TrayApp] Icon not found, using default Windows icon");
+            Console.WriteLine("[TaskbarApp] Icon not found, using default Windows icon");
             return SystemIcons.Application;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[TrayApp] Error loading icon: {ex.Message}");
+            Console.WriteLine($"[TaskbarApp] Error loading icon: {ex.Message}");
             return SystemIcons.Application;
         }
     }
 
     /// <summary>
-    /// Crea il menu contestuale della tray icon con le opzioni disponibili.
+    /// Crea il menu contestuale per l'icona nella taskbar.
     /// </summary>
     private ContextMenuStrip CreateContextMenu()
     {
@@ -125,6 +162,57 @@ public class TrayApplicationContext : ApplicationContext
     }
 
     /// <summary>
+    /// Configura la Jump List per mostrare voci personalizzate nel menu contestuale
+    /// quando si fa right-click sull'icona nella taskbar di Windows.
+    /// </summary>
+    private void ConfigureJumpList()
+    {
+        try
+        {
+            // Ottieni il path dell'eseguibile corrente
+            var exePath = Process.GetCurrentProcess().MainModule?.FileName;
+            if (string.IsNullOrEmpty(exePath))
+            {
+                Console.WriteLine("[JumpList] Cannot determine executable path");
+                return;
+            }
+
+            // Verifica che la piattaforma supporti Jump List (Windows 7+)
+            if (!TaskbarManager.IsPlatformSupported)
+            {
+                Console.WriteLine("[JumpList] Taskbar features not supported on this platform");
+                return;
+            }
+
+            // Crea una Jump List personalizzata
+            var jumpList = JumpList.CreateJumpList();
+
+            // Task: Apri ClaudeGui
+            var openTask = new JumpListLink(exePath, "Apri ClaudeGui")
+            {
+                Arguments = "--open-browser"
+            };
+            jumpList.AddUserTasks(openTask);
+
+            // Task: Esci
+            var exitTask = new JumpListLink(exePath, "Esci")
+            {
+                Arguments = "--exit"
+            };
+            jumpList.AddUserTasks(exitTask);
+
+            // Applica la Jump List
+            jumpList.Refresh();
+
+            Console.WriteLine("[JumpList] Jump List configured successfully");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[JumpList] Error configuring Jump List: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Apre il browser sull'URL del server Blazor.
     /// </summary>
     private void OpenBrowser()
@@ -139,7 +227,7 @@ public class TrayApplicationContext : ApplicationContext
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[TrayApp] Error opening browser: {ex.Message}");
+            Console.Error.WriteLine($"[TaskbarApp] Error opening browser: {ex.Message}");
             MessageBox.Show(
                 $"Impossibile aprire il browser:\n{ex.Message}",
                 "ClaudeGui - Errore",
@@ -150,38 +238,37 @@ public class TrayApplicationContext : ApplicationContext
     }
 
     /// <summary>
-    /// Chiude l'applicazione fermando il server Kestrel e rimuovendo la tray icon.
+    /// Chiude l'applicazione fermando il server Kestrel e chiudendo la form.
     /// </summary>
     private async void ExitApplication()
     {
         try
         {
-            Console.WriteLine("[TrayApp] Shutting down...");
-
-            // Nascondi l'icona dalla tray
-            _trayIcon.Visible = false;
+            Console.WriteLine("[TaskbarApp] Shutting down...");
 
             // Ferma il server Kestrel
             await _webHost.StopAsync(TimeSpan.FromSeconds(5));
 
-            // Chiudi l'applicazione Windows Forms
+            // Chiudi la form e l'applicazione
+            _taskbarForm.Close();
             Application.Exit();
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[TrayApp] Error during shutdown: {ex.Message}");
+            Console.Error.WriteLine($"[TaskbarApp] Error during shutdown: {ex.Message}");
             Application.Exit();
         }
     }
 
     /// <summary>
-    /// Cleanup: rimuove la tray icon quando il context viene distrutto.
+    /// Cleanup: rimuove la form quando il context viene distrutto.
     /// </summary>
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
-            _trayIcon?.Dispose();
+            _notifyIcon?.Dispose();
+            _taskbarForm?.Dispose();
             _webHost?.Dispose();
         }
         base.Dispose(disposing);

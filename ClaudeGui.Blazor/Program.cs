@@ -4,6 +4,54 @@ using ClaudeGui.Blazor.Hubs;
 using ClaudeGui.Blazor;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
+using System.Diagnostics;
+
+// Gestione argomenti linea di comando per Jump List
+if (args.Length > 0)
+{
+    var arg = args[0].ToLower();
+
+    if (arg == "--open-browser")
+    {
+        // Apri il browser sull'URL dell'applicazione
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "http://localhost:5000",
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error opening browser: {ex.Message}");
+        }
+        return; // Esci subito dopo aver aperto il browser
+    }
+    else if (arg == "--exit")
+    {
+        // Trova e chiudi l'applicazione principale in esecuzione
+        var currentProcess = Process.GetCurrentProcess();
+        var processes = Process.GetProcessesByName(currentProcess.ProcessName);
+
+        foreach (var proc in processes)
+        {
+            if (proc.Id != currentProcess.Id)
+            {
+                try
+                {
+                    proc.Kill();
+                    proc.WaitForExit(5000);
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Error closing application: {ex.Message}");
+                }
+            }
+        }
+        return; // Esci dopo aver chiuso le altre istanze
+    }
+}
 
 // Configura Serilog
 Log.Logger = new LoggerConfiguration()

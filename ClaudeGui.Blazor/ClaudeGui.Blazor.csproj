@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <!-- Database (MariaDB) - Stesse versioni del progetto MAUI -->
+    <PackageReference Include="Microsoft-WindowsAPICodePack-Shell" Version="1.1.5" />
     <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="9.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.0">
       <PrivateAssets>all</PrivateAssets>
