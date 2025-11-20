@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Message = ClaudeGui.Blazor.Models.Entities.Message;
 
 namespace ClaudeGui.Blazor.Services
 {
