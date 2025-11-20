@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ClaudeGui.Blazor.Models.Entities;
+using Message = ClaudeGui.Blazor.Models.Entities.Message;
 
 namespace ClaudeGui.Blazor.Data;
 

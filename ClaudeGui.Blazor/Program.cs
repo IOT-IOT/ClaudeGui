@@ -1,6 +1,7 @@
 using ClaudeGui.Blazor.Data;
 using ClaudeGui.Blazor.Services;
 using ClaudeGui.Blazor.Hubs;
+using ClaudeGui.Blazor;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 
@@ -88,4 +89,8 @@ if (connectionString != null)
 
 Log.Information("ClaudeGui Blazor Server starting on http://localhost:5000");
 
-app.Run();
+// Avvia l'applicazione Windows Forms con system tray icon
+// invece di bloccare il thread con app.Run()
+Application.EnableVisualStyles();
+Application.SetCompatibleTextRenderingDefault(false);
+Application.Run(new TrayApplicationContext(app));
