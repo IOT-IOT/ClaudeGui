@@ -5,11 +5,8 @@
 
 <div class="terminal-wrapper">
     <div class="terminal-header">
-        <span class="terminal-title">
+        <div class="header-row-1">
             <span class="terminal-icon">@(Type == TerminalType.PowerShell ? "⚡" : "🖥️")</span>
-            @(Type == TerminalType.PowerShell ? "PowerShell Terminal" : "Claude Terminal")
-        </span>
-        <span class="terminal-session-info">
             @if (Type == TerminalType.Claude)
             {
                 @if (!string.IsNullOrEmpty(ClaudeSessionId))
@@ -25,11 +22,13 @@
             {
                 <span class="session-id">PowerShell 7</span>
             }
-            @if (!string.IsNullOrEmpty(WorkingDirectory))
-            {
+        </div>
+        @if (!string.IsNullOrEmpty(WorkingDirectory))
+        {
+            <div class="header-row-2">
                 <span class="working-dir">📁 @WorkingDirectory</span>
-            }
-        </span>
+            </div>
+        }
     </div>
     <div id="@TerminalElementId" class="terminal-container"></div>
 </div>
