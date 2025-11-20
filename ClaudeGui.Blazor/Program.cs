@@ -62,6 +62,9 @@ Log.Logger = new LoggerConfiguration()
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Imposta ContentRootPath alla directory dell'eseguibile per WinExe
+builder.Environment.ContentRootPath = AppContext.BaseDirectory;
+
 // Serilog
 builder.Host.UseSerilog();
 
