@@ -69,6 +69,11 @@ namespace ClaudeGui.Blazor.Services
         /// <param name="resumeSessionId">Optional session ID to resume (solo per Claude)</param>
         /// <param name="workingDirectory">Optional working directory. If null, uses AppConfig default.</param>
         /// <param name="isNewSession">True se nuova sessione (invia /status), False se resume (Session ID già noto)</param>
+        /// <summary>
+        /// Tipo di terminal (Claude o PowerShell)
+        /// </summary>
+        public TerminalType TerminalType => _terminalType;
+
         public ClaudeProcessManager(TerminalType terminalType = TerminalType.Claude, string? resumeSessionId = null, string? workingDirectory = null, bool isNewSession = true)
         {
             _terminalType = terminalType;

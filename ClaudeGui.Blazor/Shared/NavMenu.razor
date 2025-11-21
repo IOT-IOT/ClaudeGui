@@ -3,11 +3,12 @@
 @using ClaudeGui.Blazor.Services
 @using ClaudeGui.Blazor.Data
 @using Microsoft.EntityFrameworkCore
-@inject IDbContextFactory<ClaudeGuiDbContext> DbContextFactory
+@inject IServiceProvider ServiceProvider
 @inject ITerminalManager TerminalManager
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
 @inject SessionEventService SessionEvents
+@inject ILogger<NavMenu> Logger
 @implements IDisposable
 
 <div class="top-row ps-3 navbar navbar-dark">
@@ -210,18 +211,14 @@
     }
 
     /// <summary>
-    /// OnAfterRenderAsync: ricarica sessioni dopo il primo render per catturare auto-launch di Index.
+    /// OnAfterRenderAsync: non più necessario con il sistema event-driven migliorato.
+    /// SessionEventService ora garantisce aggiornamenti real-time affidabili.
     /// </summary>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && _firstRender)
-        {
-            _firstRender = false;
-            // Delay per permettere a Index.razor di completare auto-launch
-            await Task.Delay(1500);
-            await LoadSessions();
-            StateHasChanged();
-        }
+        // Polling workaround rimosso: ora TerminalManager notifica SessionEventService
+        // dopo che il DB è aggiornato, garantendo refresh immediato e deterministico
+        await Task.CompletedTask;
     }
 
     /// <summary>
@@ -233,7 +230,11 @@
     {
         try
         {
-            await using var db = await DbContextFactory.CreateDbContextAsync();
+            // Recupera DbContextFactory opzionalmente
+            var dbContextFactory = ServiceProvider.GetService<IDbContextFactory<ClaudeGuiDbContext>>();
+            if (dbContextFactory == null) return;
+
+            await using var db = await dbContextFactory.CreateDbContextAsync();
 
             // Carica Open Sessions dal database (status = 'open')
             var dbOpenSessions = await db.Sessions
@@ -317,6 +318,7 @@
     /// </summary>
     private void ShowContextMenu(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, string sessionId, string? sessionName, string? workingDirectory, bool isOpen)
     {
+        Logger.LogInformation("🟡 [NavMenu.ShowContextMenu] CALLED - SessionId: {SessionId}, Name: {SessionName}, isOpen: {IsOpen}", sessionId, sessionName, isOpen);
         _contextMenuSessionId = sessionId;
         _contextMenuSessionName = sessionName;
         _contextMenuWorkingDirectory = workingDirectory;
@@ -324,6 +326,7 @@
         _contextMenuX = e.ClientX;
         _contextMenuY = e.ClientY;
         _showContextMenu = true;
+        Logger.LogInformation("🟡 [NavMenu.ShowContextMenu] Context menu set - _contextMenuIsOpen: {IsOpen}, _showContextMenu: {ShowMenu}", _contextMenuIsOpen, _showContextMenu);
     }
 
     /// <summary>
@@ -331,57 +334,72 @@
     /// </summary>
     private async Task HandleOpenSession()
     {
+        Logger.LogInformation("🟢 [NavMenu.HandleOpenSession] CALLED - SessionId: {SessionId}, Name: {SessionName}", _contextMenuSessionId, _contextMenuSessionName);
         _showContextMenu = false;
 
         if (string.IsNullOrEmpty(_contextMenuSessionId))
+        {
+            Logger.LogWarning("⚠️ [NavMenu.HandleOpenSession] ABORTED - SessionId is null or empty");
             return;
+        }
 
         try
         {
+            Logger.LogInformation("🟢 [NavMenu.HandleOpenSession] Navigating to session: {SessionId}", _contextMenuSessionId);
             // Naviga a Index.razor per aprire la sessione con nome e working directory
+            // TerminalManager.CreateSession notificherà SessionEventService dopo l'aggiornamento DB
+            // e NavMenu si aggiornerà automaticamente tramite l'evento SessionListChanged
             NavigateToSession(_contextMenuSessionId, _contextMenuSessionName, _contextMenuWorkingDirectory, false);
-
-            // Refresh lista sessioni dopo breve delay (permette al DB di aggiornarsi)
-            await Task.Delay(500);
-            await LoadSessions();
-            StateHasChanged();
+            Logger.LogInformation("✅ [NavMenu.HandleOpenSession] Navigation completed for: {SessionId}", _contextMenuSessionId);
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Error opening session: {ex.Message}");
+            Logger.LogError(ex, "Error opening session");
         }
+
+        await Task.CompletedTask;
     }
 
     /// <summary>
     /// Handler per chiudere una Open Session (tasto destro → Chiudi).
+    /// Usa graceful shutdown con timeout intelligente.
+    /// Il processo terminerà e ProcessCompleted verrà chiamato automaticamente per cleanup UI.
     /// </summary>
     private async Task HandleCloseSession()
     {
+        Logger.LogInformation("🔴 [NavMenu.HandleCloseSession] CALLED - SessionId: {SessionId}", _contextMenuSessionId);
         _showContextMenu = false;
 
         if (string.IsNullOrEmpty(_contextMenuSessionId))
+        {
+            Logger.LogWarning("⚠️ [NavMenu.HandleCloseSession] ABORTED - SessionId is null or empty");
             return;
+        }
 
         try
         {
             // Ottieni ConnectionId dal ClaudeSessionId
             var connectionId = TerminalManager.GetConnectionIdByClaudeSessionId(_contextMenuSessionId);
+            Logger.LogInformation("🔴 [NavMenu.HandleCloseSession] ConnectionId resolved: {ConnectionId}", connectionId);
+
             if (connectionId != null)
             {
-                // Invia comando "exit\r" per chiudere gracefully
-                await TerminalManager.SendExit(connectionId);
-
-                // Attendi che ProcessCompleted venga invocato e il DB venga aggiornato
-                await Task.Delay(1000); // Breve delay per permettere aggiornamento DB
-
-                // Refresh lista sessioni
-                await LoadSessions();
-                StateHasChanged();
+                Logger.LogInformation("🔴 [NavMenu.HandleCloseSession] Calling CloseSessionGracefully for: {ConnectionId}", connectionId);
+                // ✅ USA graceful shutdown con timeout intelligente e DB update
+                // (invia "exit\r", monitora ogni 100ms, force kill dopo 10s)
+                // TerminalManager.ProcessCompleted notificherà SessionEventService dopo l'aggiornamento DB
+                // e NavMenu si aggiornerà automaticamente tramite l'evento SessionListChanged
+                await TerminalManager.CloseSessionGracefully(connectionId, updateDatabase: true);
+                Logger.LogInformation("✅ [NavMenu.HandleCloseSession] CloseSessionGracefully completed for: {ConnectionId}", connectionId);
+            }
+            else
+            {
+                Logger.LogWarning("⚠️ [NavMenu.HandleCloseSession] ConnectionId is NULL for SessionId: {SessionId}", _contextMenuSessionId);
             }
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Error closing session: {ex.Message}");
+            Logger.LogError(ex, "Error closing session");
         }
     }
 

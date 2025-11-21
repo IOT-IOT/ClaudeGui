@@ -16,12 +16,14 @@ public class TerminalManager : ITerminalManager
     private readonly ConcurrentDictionary<string, ActiveSessionInfo> _activeSessions = new();
     private readonly IHubContext<ClaudeHub> _hubContext;
     private readonly IServiceScopeFactory _serviceScopeFactory;
+    private readonly SessionEventService _sessionEventService;
     private readonly Serilog.ILogger _logger = Log.ForContext<TerminalManager>();
 
-    public TerminalManager(IHubContext<ClaudeHub> hubContext, IServiceScopeFactory serviceScopeFactory)
+    public TerminalManager(IHubContext<ClaudeHub> hubContext, IServiceScopeFactory serviceScopeFactory, SessionEventService sessionEventService)
     {
         _hubContext = hubContext;
         _serviceScopeFactory = serviceScopeFactory;
+        _sessionEventService = sessionEventService;
     }
 
     /// <summary>
@@ -32,8 +34,8 @@ public class TerminalManager : ITerminalManager
     /// <param name="sessionId">SessionId di Claude esistente per resume (null per nuova sessione)</param>
     /// <param name="connectionId">SignalR Connection ID per il routing dei messaggi</param>
     /// <param name="sessionName">Nome della sessione (opzionale, per nuove sessioni)</param>
-    /// <returns>ConnectionId per il routing SignalR (ritorna immediatamente)</returns>
-    public Task<string> CreateSession(string workingDirectory, string? sessionId, string connectionId, string? sessionName = null)
+    /// <returns>ConnectionId per il routing SignalR</returns>
+    public async Task<string> CreateSession(string workingDirectory, string? sessionId, string connectionId, string? sessionName = null)
     {
         // isNewSession=true se sessionId è null (nuova sessione), altrimenti false (resume)
         bool isNewSession = string.IsNullOrEmpty(sessionId);
@@ -64,32 +66,33 @@ public class TerminalManager : ITerminalManager
             // Registra event handlers usando IHubContext (passa isNewSession per evitare ESC su resume)
             RegisterEventHandlers(processManager, connectionId, workingDirectory, sessionName, isNewSession);
 
-            // Se resume (sessionId già noto), aggiorna SUBITO lo status DB a 'open'
+            // Se resume (sessionId già noto), aggiorna lo status DB a 'open' e notifica NavMenu
             if (!isNewSession && !string.IsNullOrEmpty(sessionId))
             {
-                _ = Task.Run(async () =>
+                try
                 {
-                    try
-                    {
-                        using var scope = _serviceScopeFactory.CreateScope();
-                        var dbService = scope.ServiceProvider.GetRequiredService<DbService>();
-                        await dbService.UpdateSessionStatusAsync(sessionId, "open");
-                        _logger.Information("💾 Updated DB status to 'open' for resumed session: {SessionId}", sessionId);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.Error(ex, "❌ Failed to update DB status for resumed session: {SessionId}", sessionId);
-                    }
-                });
+                    using var scope = _serviceScopeFactory.CreateScope();
+                    var dbService = scope.ServiceProvider.GetRequiredService<DbService>();
+                    await dbService.UpdateSessionStatusAsync(sessionId, "open");
+                    _logger.Information("💾 Updated DB status to 'open' for resumed session: {SessionId}", sessionId);
+
+                    // Notifica NavMenu che la lista sessioni è cambiata (dopo che DB è aggiornato)
+                    _sessionEventService.NotifySessionListChanged();
+                    _logger.Information("📢 Notified session list changed for resumed session");
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error(ex, "❌ Failed to update DB status for resumed session: {SessionId}", sessionId);
+                }
             }
 
             // ✅ AVVIA IMMEDIATAMENTE il processo Claude
             processManager.Start();
             _logger.Information("🚀 Started Claude process for ConnectionId: {ConnectionId}", connectionId);
 
-            // Ritorna SUBITO il connectionId (no await, no timeout)
-            // Il Session ID di Claude arriverà in background via SessionIdDetected event
-            return Task.FromResult(connectionId);
+            // Ritorna il connectionId
+            // Il Session ID di Claude arriverà in background via SessionIdDetected event (per nuove sessioni)
+            return connectionId;
         }
 
          throw new InvalidOperationException($"Session {connectionId} already exists");
@@ -236,6 +239,10 @@ public class TerminalManager : ITerminalManager
                     _logger.Warning("⚠️ Session {SessionId} already exists in DB", claudeSessionId);
                 }
 
+                // Notifica NavMenu che la lista sessioni è cambiata (dopo inserimento/update DB)
+                _sessionEventService.NotifySessionListChanged();
+                _logger.Information("📢 Notified session list changed for new session");
+
                 // Notifica il client via SignalR con il Session ID di Claude (con connectionId per routing)
                 await _hubContext.Clients.All.SendAsync("SessionIdDetected", connectionId, claudeSessionId);
 
@@ -356,34 +363,48 @@ public class TerminalManager : ITerminalManager
         {
             try
             {
-                _logger.Information("Process completed for ConnectionId {ConnectionId}, ExitCode: {ExitCode}", connectionId, e.ExitCode);
+                _logger.Information("🔔 Process completed for ConnectionId {ConnectionId}, ExitCode: {ExitCode}", connectionId, e.ExitCode);
 
-                // 1. Aggiorna DB status='closed' se la sessione ha ClaudeSessionId
-                if (_activeSessions.TryGetValue(connectionId, out var sessionInfo) && !string.IsNullOrEmpty(sessionInfo.ClaudeSessionId))
+                // DEBUG: Verifica se la sessione esiste in _activeSessions
+                var sessionExists = _activeSessions.TryGetValue(connectionId, out var sessionInfo);
+                _logger.Information("🔍 Session lookup: ConnectionId={ConnectionId}, Exists={Exists}, ClaudeSessionId={ClaudeSessionId}",
+                    connectionId, sessionExists, sessionInfo?.ClaudeSessionId ?? "NULL");
+
+                // 1. Aggiorna DB status='closed' se la sessione ha ClaudeSessionId (AWAIT per assicurarsi che completi)
+                if (sessionExists && !string.IsNullOrEmpty(sessionInfo.ClaudeSessionId))
                 {
-                    _ = Task.Run(async () =>
+                    try
                     {
-                        try
-                        {
-                            using var scope = _serviceScopeFactory.CreateScope();
-                            var dbService = scope.ServiceProvider.GetRequiredService<DbService>();
-                            await dbService.UpdateSessionStatusAsync(sessionInfo.ClaudeSessionId, "closed");
-                            _logger.Information("💾 Updated DB status to 'closed' for session: {SessionId}", sessionInfo.ClaudeSessionId);
-                        }
-                        catch (Exception dbEx)
-                        {
-                            _logger.Error(dbEx, "❌ Failed to update DB status for session: {SessionId}", sessionInfo.ClaudeSessionId);
-                        }
-                    });
+                        using var scope = _serviceScopeFactory.CreateScope();
+                        var dbService = scope.ServiceProvider.GetRequiredService<DbService>();
+                        await dbService.UpdateSessionStatusAsync(sessionInfo.ClaudeSessionId, "closed");
+                        _logger.Information("💾 Updated DB status to 'closed' for session: {SessionId}", sessionInfo.ClaudeSessionId);
+                    }
+                    catch (Exception dbEx)
+                    {
+                        _logger.Error(dbEx, "❌ Failed to update DB status for session: {SessionId}", sessionInfo.ClaudeSessionId);
+                    }
 
                     // 2. Rimuovi sessione da _activeSessions
                     _activeSessions.TryRemove(connectionId, out _);
                     _logger.Information("🗑️ Removed session from memory: ConnectionId={ConnectionId}, ClaudeSessionId={ClaudeSessionId}",
                         connectionId, sessionInfo.ClaudeSessionId);
+
+                    // 4. Notifica NavMenu che la lista sessioni è cambiata (dopo che DB è aggiornato)
+                    _sessionEventService.NotifySessionListChanged();
+                    _logger.Information("📢 Notified session list changed for NavMenu refresh");
+                }
+                else
+                {
+                    // ⚠️ Sessione non trovata o ClaudeSessionId mancante
+                    _logger.Warning("⚠️ SKIPPED cleanup: Session not found in _activeSessions or ClaudeSessionId is null. ConnectionId={ConnectionId}", connectionId);
                 }
 
                 // 3. Notifica client via SignalR con connectionId per routing corretto
+                _logger.Information("📡 Sending ProcessCompleted to client via SignalR: ConnectionId={ConnectionId}", connectionId);
                 await _hubContext.Clients.All.SendAsync("ProcessCompleted", connectionId, e.ExitCode, e.WasKilled);
+                _logger.Information("✅ ProcessCompleted sent successfully");
+
             }
             catch (Exception ex)
             {
@@ -437,6 +458,7 @@ public class TerminalManager : ITerminalManager
     /// <param name="sessionId">Session ID (ConnectionId)</param>
     public void KillSession(string sessionId)
     {
+        _logger.Warning("💀 [KillSession] CALLED for session: {SessionId}", sessionId);
         if (_activeSessions.TryRemove(sessionId, out var sessionInfo))
         {
             // 💾 Aggiorna DB status a "closed" se disponibile ClaudeSessionId
@@ -466,6 +488,133 @@ public class TerminalManager : ITerminalManager
         else
         {
             _logger.Warning("Cannot kill session {SessionId}: not found", sessionId);
+        }
+    }
+
+    /// <summary>
+    /// Termina SOLO il processo della sessione (claude.exe/powershell)
+    /// SENZA aggiornare lo status nel database.
+    /// Usato quando si chiude l'app Blazor per permettere il resume delle sessioni.
+    /// </summary>
+    /// <param name="sessionId">Session ID (ConnectionId)</param>
+    public void KillProcessOnly(string sessionId)
+    {
+        _logger.Warning("💀 [KillProcessOnly] CALLED for session: {SessionId}", sessionId);
+        if (_activeSessions.TryRemove(sessionId, out var sessionInfo))
+        {
+            _logger.Information("💀 [KillProcessOnly] Session found, disposing ProcessManager");
+            // ❌ NON aggiorna DB - le sessioni rimangono "open" per il resume
+            // ✅ Termina solo il processo fisico (claude.exe/powershell)
+            sessionInfo.ProcessManager.Dispose();
+
+            _logger.Information("🛑 Process terminated for session: {SessionId} (ClaudeSessionId: {ClaudeSessionId}) - DB status NOT updated",
+                sessionId, sessionInfo.ClaudeSessionId ?? "not detected");
+        }
+        else
+        {
+            _logger.Warning("Cannot terminate process for session {SessionId}: not found", sessionId);
+        }
+    }
+
+    /// <summary>
+    /// Marca una sessione come "closed" nel database.
+    /// Helper method per aggiornare lo status DB in modo asincrono.
+    /// </summary>
+    /// <param name="connectionId">SignalR Connection ID</param>
+    private async Task MarkSessionAsClosed(string connectionId)
+    {
+        if (_activeSessions.TryGetValue(connectionId, out var sessionInfo) && !string.IsNullOrEmpty(sessionInfo.ClaudeSessionId))
+        {
+            try
+            {
+                using var scope = _serviceScopeFactory.CreateScope();
+                var dbService = scope.ServiceProvider.GetRequiredService<DbService>();
+                await dbService.UpdateSessionStatusAsync(sessionInfo.ClaudeSessionId, "closed");
+                _logger.Information("💾 Session {SessionId} marked as closed in DB", sessionInfo.ClaudeSessionId);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "❌ Failed to update DB status for session {SessionId}", sessionInfo.ClaudeSessionId);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Chiude gracefully una sessione con timeout intelligente.
+    /// 1. Invia comando "exit\r" a Claude
+    /// 2. Monitora ogni 100ms se il processo si è chiuso
+    /// 3. Se chiuso entro 10 secondi → successo
+    /// 4. Se timeout → force kill
+    /// </summary>
+    /// <param name="connectionId">SignalR Connection ID</param>
+    /// <param name="updateDatabase">Se true, marca la sessione come "closed" nel DB</param>
+    public async Task CloseSessionGracefully(string connectionId, bool updateDatabase)
+    {
+        _logger.Information("🔄 CloseSessionGracefully called - ConnectionId: {ConnectionId}, UpdateDB: {UpdateDB}",
+            connectionId, updateDatabase);
+
+        // 1. Invia comando "exit\r" gracefully
+        try
+        {
+            await SendExit(connectionId);
+            _logger.Information("⌨️ Sent 'exit\\r' command to session: {ConnectionId}", connectionId);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "⚠️ Failed to send exit command, will force kill - ConnectionId: {ConnectionId}", connectionId);
+
+            // Forza terminazione immediata se SendExit fallisce
+            if (updateDatabase)
+            {
+                KillSession(connectionId);
+            }
+            else
+            {
+                KillProcessOnly(connectionId);
+            }
+            return;
+        }
+
+        // 2. Monitora ogni 100ms per max 10 secondi (100 tentativi)
+        var maxAttempts = 100;
+        var delayMs = 100;
+        var startTime = DateTime.Now;
+
+        for (int i = 0; i < maxAttempts; i++)
+        {
+            await Task.Delay(delayMs);
+
+            // Verifica se il processo si è già chiuso
+            if (!IsSessionRunning(connectionId))
+            {
+                var elapsedMs = (DateTime.Now - startTime).TotalMilliseconds;
+                _logger.Information("✅ Process closed gracefully after {Ms}ms for ConnectionId: {ConnectionId}",
+                    elapsedMs, connectionId);
+
+                // Se richiesto, aggiorna DB status a "closed"
+                if (updateDatabase)
+                {
+                    await MarkSessionAsClosed(connectionId);
+                }
+
+                // Rimuovi da _activeSessions
+                _activeSessions.TryRemove(connectionId, out _);
+                _logger.Information("🗑️ Session removed from memory: {ConnectionId}", connectionId);
+                return;
+            }
+        }
+
+        // 3. Timeout raggiunto (10 secondi) → force kill
+        _logger.Warning("⚠️ Graceful shutdown timeout (10s) for ConnectionId: {ConnectionId}, forcing termination",
+            connectionId);
+
+        if (updateDatabase)
+        {
+            KillSession(connectionId); // Force kill + update DB
+        }
+        else
+        {
+            KillProcessOnly(connectionId); // Force kill senza DB update
         }
     }
 
@@ -510,8 +659,20 @@ public class TerminalManager : ITerminalManager
     /// <returns>True se la sessione esiste ed è in esecuzione</returns>
     public bool IsSessionRunning(string sessionId)
     {
-        var manager = GetSession(sessionId);
-        return manager?.IsRunning ?? false;
+        _logger.Debug("🔍 [IsSessionRunning] Checking session: {SessionId}", sessionId);
+        var exists = _activeSessions.TryGetValue(sessionId, out var sessionInfo);
+        _logger.Debug("🔍 [IsSessionRunning] Session exists in dictionary: {Exists}", exists);
+
+        if (!exists)
+        {
+            _logger.Debug("🔍 [IsSessionRunning] Result: FALSE (not in _activeSessions)");
+            return false;
+        }
+
+        var isRunning = sessionInfo.ProcessManager.IsRunning;
+        _logger.Debug("🔍 [IsSessionRunning] ProcessManager.IsRunning: {IsRunning}", isRunning);
+        _logger.Debug("🔍 [IsSessionRunning] Final Result: {Result}", isRunning);
+        return isRunning;
     }
 
     /// <summary>
@@ -566,7 +727,10 @@ public class TerminalManager : ITerminalManager
     /// <returns>ConnectionId se trovato, altrimenti null</returns>
     public string? GetConnectionIdByClaudeSessionId(string claudeSessionId)
     {
-        var session = _activeSessions.Values.FirstOrDefault(s => s.ClaudeSessionId == claudeSessionId);
+        // Filtra SOLO i Claude terminals, non i PowerShell
+        var session = _activeSessions.Values.FirstOrDefault(s =>
+            s.ClaudeSessionId == claudeSessionId &&
+            s.ProcessManager.TerminalType == TerminalType.Claude);
         return session?.ConnectionId;
     }
 
